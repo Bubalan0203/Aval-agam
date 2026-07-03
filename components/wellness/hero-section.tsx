@@ -1,0 +1,140 @@
+"use client";
+
+import { MapPin, Leaf, Wind } from "lucide-react";
+
+const HERO_IMAGE = "https://images.unsplash.com/photo-1571935538821-8ecb6b4dea17?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxJbmRpYW4lMjB3b21hbiUyMG1lZGl0YXRpbmclMjBzZXJlbmUlMjB3YXJtJTIwbGlnaHQlMjBsb3R1c3xlbnwxfHx8fDE3ODMwMTM1MDl8MA&ixlib=rb-4.1.0&q=80&w=1080";
+
+export function HeroSection() {
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
+  return (
+    <section id="about" style={{ backgroundColor: '#FBF4E8' }} className="w-full">
+      <div className="max-w-[1440px] mx-auto px-6 lg:px-16 py-20 lg:py-28 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        {/* Left */}
+        <div className="flex flex-col gap-6">
+          {/* Eyebrow */}
+          <p style={{
+            fontFamily: 'Poppins, sans-serif',
+            color: '#C9A25F',
+            fontSize: '11px',
+            letterSpacing: '0.25em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}>
+            AVAL AGAM · HER INNER WORLD
+          </p>
+
+          {/* Headline */}
+          <h1 style={{
+            fontFamily: 'Playfair Display, serif',
+            color: '#0F332B',
+            fontSize: 'clamp(40px, 5vw, 64px)',
+            lineHeight: 1.15,
+            fontWeight: 600,
+          }}>
+            A soulspace to know,<br />
+            grow &{' '}
+            <em style={{ color: '#C8734F', fontStyle: 'italic' }}>thrive.</em>
+          </h1>
+
+          {/* Subtext */}
+          <p style={{
+            fontFamily: 'Poppins, sans-serif',
+            color: '#2F3328',
+            fontSize: '17px',
+            lineHeight: 1.75,
+            maxWidth: '520px',
+          }}>
+            The world inside us is often louder than the world outside. We carry thoughts we do not speak, emotions we do not fully understand, roles we move through every day. Aval Agam was born for that return — a gentle space to pause, breathe, listen inward, and slowly come home to yourself.
+          </p>
+
+          {/* Info Pills */}
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+            {[
+              { icon: <MapPin size={13} style={{ color: '#C9A25F' }} />, text: 'Coimbatore' },
+              { icon: <Wind size={13} style={{ color: '#C9A25F' }} />, text: 'Women-centered & family-inclusive' },
+              { icon: <Leaf size={13} style={{ color: '#C9A25F' }} />, text: 'Breathwork, mindfulness & reflection' },
+            ].map(({ icon, text }) => (
+              <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#ffffff', borderRadius: '9999px', padding: '8px 16px', fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', boxShadow: '0 2px 10px rgba(15,51,43,0.07)', whiteSpace: 'nowrap' }}>
+                {icon}{text}
+              </span>
+            ))}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap items-center gap-4 mt-2">
+            <button
+              onClick={() => scrollTo("final-cta")}
+              style={{
+                backgroundColor: '#0F332B',
+                color: '#FBF4E8',
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '12px',
+                letterSpacing: '0.1em',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                borderRadius: '9999px',
+                padding: '14px 28px',
+              }}
+              className="hover:opacity-90 transition-opacity"
+            >
+              BOOK AN INNER CLARITY SESSION
+            </button>
+            <button
+              onClick={() => scrollTo("offer")}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#C8734F',
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '14px',
+                fontWeight: 500,
+              }}
+            >
+              Explore Group Circles →
+            </button>
+          </div>
+
+          {/* Small Note */}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+            <span style={{ flexShrink: 0, backgroundColor: '#EEE2D5', color: '#0F332B', fontFamily: 'Poppins, sans-serif', fontSize: '11px', letterSpacing: '0.05em', borderRadius: '9999px', padding: '4px 12px', fontWeight: 500 }}>
+              + Gentle
+            </span>
+            <p style={{ fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', opacity: 0.7, margin: 0 }}>
+              No prior experience needed. You only need the willingness to begin.
+            </p>
+          </div>
+        </div>
+
+        {/* Right — Hero Image */}
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            borderRadius: '24px',
+            overflow: 'hidden',
+            aspectRatio: '4/5',
+            position: 'relative',
+          }}>
+            {/* Radial glow behind */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(ellipse at center, rgba(200,115,79,0.15) 0%, transparent 70%)',
+              zIndex: 1,
+              pointerEvents: 'none',
+            }} />
+            <img
+              src={HERO_IMAGE}
+              alt="Serene woman meditating in warm light"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
