@@ -14,6 +14,16 @@ export async function POST(req: NextRequest) {
     const folder = (formData.get("folder") as string) || "chapterone-events";
 
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!file.type.startsWith("image/")) {
+      return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      return NextResponse.json({ error: "Image must be under 8MB" }, { status: 400 });
+    }
+    // Only allow uploads into this app's folders
+    if (!folder.startsWith("chapterone")) {
+      return NextResponse.json({ error: "Invalid folder" }, { status: 400 });
+    }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);

@@ -101,6 +101,15 @@ export default function AdminEventCreatePage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const validTickets = tickets.filter(t => t.name.trim() && Number(t.available) > 0);
+    if (validTickets.length === 0) {
+      setToast({ type: "error", msg: "Add at least one ticket type with a name and quantity." });
+      return;
+    }
+    if (form.startTime && form.endTime && form.endTime <= form.startTime) {
+      setToast({ type: "error", msg: "End time must be after start time." });
+      return;
+    }
     setSaving(true);
     try {
       await createEvent({
@@ -114,8 +123,7 @@ export default function AdminEventCreatePage() {
         locationUrl: form.locationUrl,
         image:       heroBanner ?? "",
         gallery:     galleryImgs,
-        ticketTypes: tickets
-          .filter(t => t.name)
+        ticketTypes: validTickets
           .map(t => ({ id: crypto.randomUUID(), name: t.name, price: Number(t.price) || 0, available: Number(t.available) || 0, sold: 0 })),
       });
       setSaved(true);
@@ -183,7 +191,7 @@ export default function AdminEventCreatePage() {
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
           <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "16px", fontWeight: 700, marginBottom: "14px" }}>Date &amp; Time</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div><Label>Event Date</Label><input type="date" value={form.date} onChange={e => set("date", e.target.value)} required style={inputStyle} /></div>
+            <div><Label>Event Date</Label><input type="date" min={new Date().toISOString().split("T")[0]} value={form.date} onChange={e => set("date", e.target.value)} required style={inputStyle} /></div>
             <div><Label>Start Time</Label><input type="time" value={form.startTime} onChange={e => set("startTime", e.target.value)} style={inputStyle} /></div>
             <div><Label>End Time</Label><input type="time" value={form.endTime} onChange={e => set("endTime", e.target.value)} style={inputStyle} /></div>
           </div>

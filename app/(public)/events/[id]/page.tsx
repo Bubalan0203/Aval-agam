@@ -25,7 +25,13 @@ export default function EventDetailsPage() {
   useEffect(() => {
     Promise.all([getEvent(id), getEvents()]).then(([evt, all]) => {
       setEvent(evt);
-      setOtherEvents(all.filter(e => e.id !== id).slice(0, 3));
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      setOtherEvents(
+        all
+          .filter(e => e.id !== id && new Date(e.date) >= today)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 3)
+      );
       setLoading(false);
     });
   }, [id]);
@@ -35,6 +41,12 @@ export default function EventDetailsPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Lock page scroll while the lightbox is open
+  useEffect(() => {
+    document.body.style.overflow = lightboxImg ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [lightboxImg]);
 
   if (loading) {
     return (
@@ -53,7 +65,7 @@ export default function EventDetailsPage() {
     );
   }
 
-  const isSoldOut = event.ticketTypes.every(t => t.sold >= t.available);
+  const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
   const galleryAll = [event.image, ...event.gallery];
 
   return (

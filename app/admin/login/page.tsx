@@ -42,11 +42,11 @@ export default function AdminLoginPage() {
           {/* Logo + title */}
           <div style={{ textAlign: "center", marginBottom: "32px" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
-              <Image src="/logo.png" alt="ChapterOne" width={52} height={52} style={{ objectFit: "contain" }} />
+              <Image src="/logo.png" alt="Aval Agam" width={52} height={52} style={{ objectFit: "contain" }} />
             </div>
             <p style={{ color: "#C9A25F", fontSize: "10px", letterSpacing: "0.25em", textTransform: "uppercase", fontWeight: 600, marginBottom: "6px" }}>Admin Panel</p>
             <h1 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700 }}>Welcome back</h1>
-            <p style={{ color: "#2F3328", fontSize: "13px", opacity: 0.55, marginTop: "4px" }}>Sign in to manage ChapterOne</p>
+            <p style={{ color: "#2F3328", fontSize: "13px", opacity: 0.55, marginTop: "4px" }}>Sign in to manage Aval Agam</p>
           </div>
 
           <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

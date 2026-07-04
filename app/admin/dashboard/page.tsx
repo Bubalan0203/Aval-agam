@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { BookOpen, CalendarDays, DollarSign, Ticket, Plus, Search, Trash2 } from "lucide-react";
 import { getEvents, getBookings, deleteEvent } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const MONTHS = ["All Months","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const YEARS  = ["All Years", "2025", "2026", "2027"];
@@ -44,12 +45,16 @@ export default function AdminDashboardPage() {
     return matchSearch && matchMonth && matchYear;
   }), [events, search, month, year]);
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this event? This cannot be undone.")) return;
-    setDeleting(id);
-    await deleteEvent(id);
-    setEvents(p => p.filter(e => e.id !== id));
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  async function handleDelete() {
+    if (!confirmId) return;
+    setDeleting(confirmId);
+    await deleteEvent(confirmId);
+    setEvents(p => p.filter(e => e.id !== confirmId));
+    setBookings(p => p.filter(b => b.eventId !== confirmId));
     setDeleting(null);
+    setConfirmId(null);
   }
 
   return (
@@ -59,7 +64,7 @@ export default function AdminDashboardPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h1 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700, marginBottom: "4px" }}>Dashboard</h1>
-          <p style={{ color: "#2F3328", fontSize: "14px", opacity: 0.6 }}>ChapterOne events &amp; bookings overview</p>
+          <p style={{ color: "#2F3328", fontSize: "14px", opacity: 0.6 }}>Aval Agam events &amp; bookings overview</p>
         </div>
         <button onClick={() => router.push("/admin/events/create")} style={{ display: "flex", alignItems: "center", gap: "8px", backgroundColor: "#0F332B", color: "#FBF4E8", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "12px 24px", cursor: "pointer" }}>
           <Plus size={15} /> CREATE EVENT
@@ -137,13 +142,22 @@ export default function AdminDashboardPage() {
                 <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 700 }}>{booked}</p>
                 <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", opacity: 0.5 }}>bookings</p>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); handleDelete(event.id); }} disabled={deleting === event.id} style={{ width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(200,115,79,0.1)", border: "none", borderRadius: "8px", cursor: "pointer", color: "#C8734F", opacity: deleting === event.id ? 0.5 : 1 }}>
+              <button onClick={(e) => { e.stopPropagation(); setConfirmId(event.id); }} disabled={deleting === event.id} style={{ width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(200,115,79,0.1)", border: "none", borderRadius: "8px", cursor: "pointer", color: "#C8734F", opacity: deleting === event.id ? 0.5 : 1 }}>
                 <Trash2 size={14} />
               </button>
             </div>
           );
         })}
       </div>
+
+      <ConfirmModal
+        open={!!confirmId}
+        title="Delete this event?"
+        message="The event and all of its bookings will be permanently removed. This cannot be undone."
+        busy={!!deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

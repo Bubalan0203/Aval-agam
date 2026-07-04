@@ -37,8 +37,8 @@ export function ScenariosSection() {
             WHERE IT LANDS IN LIFE
           </p>
           <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: 'clamp(28px, 3.5vw, 46px)', lineHeight: 1.25, fontWeight: 600 }}>
-            Still{' '}
-            <em style={{ color: '#C8734F', fontStyle: 'italic' }}>wondering?</em>
+            How it shows up in{' '}
+            <em style={{ color: '#C8734F', fontStyle: 'italic' }}>real life.</em>
           </h2>
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75, maxWidth: '480px' }}>
             Small scenarios — how this work quietly shows up in the rooms of an ordinary week.

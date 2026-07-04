@@ -1,6 +1,6 @@
 import {
   collection, doc, getDocs, getDoc, addDoc, deleteDoc, updateDoc,
-  query, orderBy, serverTimestamp, Timestamp,
+  query, orderBy, where, serverTimestamp, Timestamp, runTransaction,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -40,6 +40,7 @@ export type Booking = {
   ticketType:  string;
   quantity:    number;
   amount:      number;
+  paymentMethod?: string;
   bookedAt?:   Timestamp;
 };
 
@@ -66,6 +67,9 @@ export async function createEvent(data: Omit<Event, "id" | "createdAt">): Promis
 }
 
 export async function deleteEvent(id: string): Promise<void> {
+  // Delete the event's bookings first so stats stay accurate
+  const snap = await getDocs(query(collection(db, "bookings"), where("eventId", "==", id)));
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
   await deleteDoc(doc(db, "events", id));
 }
 
@@ -75,24 +79,34 @@ export async function updateEvent(id: string, data: Omit<Event, "id" | "createdA
 
 // ── Bookings ─────────────────────────────────────────────────────────────────
 
+/**
+ * Creates a booking atomically: re-reads the event inside a transaction,
+ * verifies enough seats remain, increments `sold`, and saves the booking.
+ * Throws Error("SOLD_OUT") if not enough seats are left.
+ */
 export async function createBooking(data: Omit<Booking, "id" | "bookedAt"> & { ticketTypeId: string }): Promise<string> {
-  const ref = await addDoc(collection(db, "bookings"), {
-    ...data,
-    bookedAt: serverTimestamp(),
+  const bookingRef = doc(collection(db, "bookings"));
+  const eventRef   = doc(db, "events", data.eventId);
+
+  await runTransaction(db, async (tx) => {
+    const eventSnap = await tx.get(eventRef);
+    if (!eventSnap.exists()) throw new Error("EVENT_NOT_FOUND");
+
+    const eventData = eventSnap.data() as Event;
+    const ticket = eventData.ticketTypes.find(
+      t => t.id === data.ticketTypeId || t.name === data.ticketType
+    );
+    if (!ticket) throw new Error("TICKET_NOT_FOUND");
+    if (ticket.sold + data.quantity > ticket.available) throw new Error("SOLD_OUT");
+
+    const updatedTickets = eventData.ticketTypes.map(t =>
+      t === ticket ? { ...t, sold: t.sold + data.quantity } : t
+    );
+    tx.update(eventRef, { ticketTypes: updatedTickets });
+    tx.set(bookingRef, { ...data, bookedAt: serverTimestamp() });
   });
 
-  // Increment sold count — match by id first, fall back to name
-  const eventSnap = await getDoc(doc(db, "events", data.eventId));
-  if (eventSnap.exists()) {
-    const eventData = eventSnap.data() as Event;
-    const updatedTickets = eventData.ticketTypes.map(t => {
-      const match = t.id === data.ticketTypeId || t.name === data.ticketType;
-      return match ? { ...t, sold: t.sold + data.quantity } : t;
-    });
-    await updateDoc(doc(db, "events", data.eventId), { ticketTypes: updatedTickets });
-  }
-
-  return ref.id;
+  return bookingRef.id;
 }
 
 export async function getBookings(): Promise<Booking[]> {
@@ -102,6 +116,9 @@ export async function getBookings(): Promise<Booking[]> {
 }
 
 export async function getEventBookings(eventId: string): Promise<Booking[]> {
-  const all = await getBookings();
-  return all.filter(b => b.eventId === eventId);
+  const q = query(collection(db, "bookings"), where("eventId", "==", eventId));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() } as Booking))
+    .sort((a, b) => (b.bookedAt?.toMillis() ?? 0) - (a.bookedAt?.toMillis() ?? 0));
 }

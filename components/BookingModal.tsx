@@ -2,7 +2,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, Smartphone, CreditCard, Landmark, Wallet } from "lucide-react";
 import emailjs from "@emailjs/browser";
 import { createBooking } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
@@ -14,21 +14,33 @@ const EMAILJS_PUBLIC_KEY  = "2_h1Ru1ihbvs3-2yg";
 type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void };
 type Step = "form" | "success" | "error";
 
+const PAYMENT_METHODS = [
+  { id: "upi",        label: "UPI",         Icon: Smartphone },
+  { id: "card",       label: "Card",        Icon: CreditCard },
+  { id: "netbanking", label: "Net Banking", Icon: Landmark   },
+  { id: "wallet",     label: "Wallet",      Icon: Wallet     },
+];
+
 export function BookingModal({ event, open, onOpenChange }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
-  const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: event.ticketTypes[0]?.id ?? "", quantity: 1 });
-  const [errors, setErrors]   = useState<Record<string, string>>({});
-  const [sending, setSending] = useState(false);
+  // Pre-select the first ticket that still has seats, not just the first one
+  const firstAvailable = event.ticketTypes.find(t => t.sold < t.available) ?? event.ticketTypes[0];
+  const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: firstAvailable?.id ?? "", quantity: 1, paymentMethod: "upi" });
+  const [errors, setErrors]     = useState<Record<string, string>>({});
+  const [sending, setSending]   = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const selectedTicket = event.ticketTypes.find((t) => t.id === form.ticketTypeId);
+  const remaining = selectedTicket ? Math.max(0, selectedTicket.available - selectedTicket.sold) : 0;
+  const maxQty = Math.min(10, remaining);
   const total = (selectedTicket?.price ?? 0) * form.quantity;
 
   function validate() {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Name is required";
     if (!form.email.trim() || !/^[^@]+@[^@]+\.[^@]+$/.test(form.email)) e.email = "Valid email required";
-    if (!form.phone.trim() || form.phone.length < 10) e.phone = "Valid phone required";
+    if (!/^\d{10}$/.test(form.phone.replace(/[\s\-+]/g, "").replace(/^91/, "").replace(/^0/, ""))) e.phone = "Valid 10-digit phone required";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -36,45 +48,56 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   async function handlePay() {
     if (!validate()) return;
     setSending(true);
+    setErrorMsg("");
     try {
-      await Promise.all([
-        createBooking({
-          eventId:      event.id,
-          eventTitle:   event.title,
-          name:         form.name,
-          email:        form.email,
-          phone:        form.phone,
-          ticketType:   selectedTicket?.name ?? "",
-          ticketTypeId: form.ticketTypeId,
-          quantity:     form.quantity,
-          amount:       total,
-        }),
-        emailjs.send(
-          EMAILJS_SERVICE_ID,
-          EMAILJS_TEMPLATE_ID,
-          {
-            customer_name:  form.name,
-            customer_email: form.email,
-            customer_phone: form.phone,
-            event_title:    event.title,
-            event_date:     new Date(event.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-            event_time:     `${event.startTime} — ${event.endTime}`,
-            event_venue:    event.location,
-            ticket_type:    selectedTicket?.name ?? "",
-            quantity:       String(form.quantity),
-            amount:         total === 0 ? "Free" : `₹${total.toLocaleString()}`,
-            to_email:       form.email,
-          },
-          EMAILJS_PUBLIC_KEY
-        ),
-      ]);
-      setSending(false);
-      setStep("success");
+      // 1. Save the booking first (atomic — fails if seats ran out)
+      await createBooking({
+        eventId:      event.id,
+        eventTitle:   event.title,
+        name:         form.name,
+        email:        form.email,
+        phone:        form.phone,
+        ticketType:   selectedTicket?.name ?? "",
+        ticketTypeId: form.ticketTypeId,
+        quantity:     form.quantity,
+        amount:       total,
+        paymentMethod: total > 0 ? form.paymentMethod : "free",
+      });
     } catch (err) {
-      console.error("EmailJS error:", err);
+      const code = err instanceof Error ? err.message : "";
+      setErrorMsg(code === "SOLD_OUT"
+        ? "Sorry, not enough seats are left for this ticket. Please pick a lower quantity or another ticket."
+        : "We couldn't complete your booking. Please try again.");
       setSending(false);
       setStep("error");
+      return;
     }
+
+    // 2. Send the email — booking is already saved, so a mail failure is not fatal
+    try {
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          customer_name:  form.name,
+          customer_email: form.email,
+          customer_phone: form.phone,
+          event_title:    event.title,
+          event_date:     new Date(event.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+          event_time:     `${event.startTime} — ${event.endTime}`,
+          event_venue:    event.location,
+          ticket_type:    selectedTicket?.name ?? "",
+          quantity:       String(form.quantity),
+          amount:         total === 0 ? "Free" : `₹${total.toLocaleString()}`,
+          to_email:       form.email,
+        },
+        EMAILJS_PUBLIC_KEY
+      );
+    } catch (err) {
+      console.error("EmailJS error (booking already saved):", err);
+    }
+    setSending(false);
+    setStep("success");
   }
   function handleClose() {
     if (step === "success") {
@@ -99,7 +122,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
               <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "15px", lineHeight: 1.7 }}>A confirmation email has been sent to <strong>{form.email}</strong>. See you at the event!</p>
               <div style={{ backgroundColor: "#EEE2D5", borderRadius: "12px", padding: "20px 24px", width: "100%", marginTop: "8px", textAlign: "left" }}>
                 <p style={{ fontFamily: "Poppins, sans-serif", color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "14px" }}>Booking Summary</p>
-                {[["Event", event.title], ["Name", form.name], ["Email", form.email], ["Ticket", selectedTicket?.name ?? "—"], ["Quantity", String(form.quantity)], ["Total Paid", total === 0 ? "Free" : `₹${total.toLocaleString()}`]].map(([k, v]) => (
+                {[["Event", event.title], ["Name", form.name], ["Email", form.email], ["Ticket", selectedTicket?.name ?? "—"], ["Quantity", String(form.quantity)], ...(total > 0 ? [["Payment", PAYMENT_METHODS.find(p => p.id === form.paymentMethod)?.label ?? "—"]] : []), ["Total Paid", total === 0 ? "Free" : `₹${total.toLocaleString()}`]].map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                     <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.7 }}>{k}</span>
                     <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{v}</span>
@@ -112,7 +135,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
             <div style={{ padding: "48px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
               <AlertCircle size={56} style={{ color: "#C8734F" }} />
               <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px", fontWeight: 700 }}>Something went wrong</h2>
-              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", lineHeight: 1.7, maxWidth: "340px" }}>We couldn&apos;t send your confirmation email. Please try again or contact us directly.</p>
+              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", lineHeight: 1.7, maxWidth: "340px" }}>{errorMsg || "We couldn't complete your booking. Please try again."}</p>
               <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
                 <button onClick={() => setStep("form")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "13px 28px", cursor: "pointer" }}>TRY AGAIN</button>
                 <button onClick={handleClose} style={{ backgroundColor: "transparent", color: "#2F3328", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "1.5px solid #EEE2D5", borderRadius: "9999px", padding: "13px 28px", cursor: "pointer" }}>CLOSE</button>
@@ -154,7 +177,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                       return (
                         <label key={tt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: "10px", cursor: soldOut ? "not-allowed" : "pointer", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", opacity: soldOut ? 0.5 : 1 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <input type="radio" name="ticketType" value={tt.id} checked={selected} disabled={soldOut} onChange={() => !soldOut && setForm({ ...form, ticketTypeId: tt.id })} style={{ accentColor: "#0F332B" }} />
+                            <input type="radio" name="ticketType" value={tt.id} checked={selected} disabled={soldOut} onChange={() => !soldOut && setForm({ ...form, ticketTypeId: tt.id, quantity: Math.min(form.quantity, Math.max(1, tt.available - tt.sold)) })} style={{ accentColor: "#0F332B" }} />
                             <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: selected ? 600 : 400 }}>{tt.name}{soldOut && <span style={{ color: "#C8734F", fontSize: "11px", marginLeft: "8px" }}> Sold Out</span>}</span>
                           </div>
                           <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "14px", fontWeight: 700 }}>{tt.price === 0 ? "Free" : `₹${tt.price}`}</span>
@@ -167,9 +190,27 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <button onClick={() => setForm({ ...form, quantity: Math.max(1, form.quantity - 1) })} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #EEE2D5", background: "#fff", cursor: "pointer", fontSize: "18px", color: "#0F332B", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
                     <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "16px", fontWeight: 600, color: "#0F332B", minWidth: "24px", textAlign: "center" }}>{form.quantity}</span>
-                    <button onClick={() => setForm({ ...form, quantity: Math.min(10, form.quantity + 1) })} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #EEE2D5", background: "#fff", cursor: "pointer", fontSize: "18px", color: "#0F332B", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                    <button onClick={() => setForm({ ...form, quantity: Math.min(maxQty, form.quantity + 1) })} disabled={form.quantity >= maxQty} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #EEE2D5", background: "#fff", cursor: form.quantity >= maxQty ? "not-allowed" : "pointer", fontSize: "18px", color: "#0F332B", display: "flex", alignItems: "center", justifyContent: "center", opacity: form.quantity >= maxQty ? 0.4 : 1 }}>+</button>
+                    {remaining > 0 && remaining <= 10 && (
+                      <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", fontWeight: 500 }}>Only {remaining} seat{remaining > 1 ? "s" : ""} left</span>
+                    )}
                   </div>
                 </Field>
+                {total > 0 && (
+                  <Field label="Payment Method" icon={<CreditCard size={14} />}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                      {PAYMENT_METHODS.map(({ id, label, Icon }) => {
+                        const selected = form.paymentMethod === id;
+                        return (
+                          <button key={id} type="button" onClick={() => setForm({ ...form, paymentMethod: id })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", padding: "12px 6px", borderRadius: "10px", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", cursor: "pointer" }}>
+                            <Icon size={18} style={{ color: selected ? "#0F332B" : "#C9A25F" }} />
+                            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: selected ? 600 : 400, color: "#0F332B", whiteSpace: "nowrap" }}>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                )}
                 <div style={{ backgroundColor: "#EEE2D5", borderRadius: "12px", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px" }}>Total Amount</span>
                   <span style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>{total === 0 ? "Free" : `₹${total.toLocaleString()}`}</span>

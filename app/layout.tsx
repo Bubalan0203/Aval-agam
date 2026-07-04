@@ -2,8 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ChapterOne — Literary Events",
-  description: "Coimbatore's premier literary event platform",
+  title: "Aval Agam — Her Inner World",
+  description: "A soulspace to know, grow & thrive. Wellness circles, workshops and literary events in Coimbatore.",
+  icons: { icon: "/logo.png" },
+  openGraph: {
+    title: "Aval Agam — Her Inner World",
+    description: "A soulspace to know, grow & thrive. Wellness circles, workshops and literary events in Coimbatore.",
+    images: ["/logo.png"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

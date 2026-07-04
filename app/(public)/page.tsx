@@ -29,7 +29,12 @@ export default function HomePage() {
 
   useEffect(() => { getEvents().then(setEvents); }, []);
 
-  const filtered = events.filter((e) => category === "All" || e.category === category);
+  // Only upcoming events, soonest first
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const filtered = events
+    .filter((e) => new Date(e.date) >= today)
+    .filter((e) => category === "All" || e.category === category)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   return (
     <div style={{ fontFamily: "Poppins, sans-serif" }}>

@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Clock, MapPin, Ticket, Trash2, Edit2, Mail, Phone, User } from "lucide-react";
 import { getEvent, getEventBookings, deleteEvent } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -17,6 +18,7 @@ export default function AdminEventDetailPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading]   = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([getEvent(id), getEventBookings(id)]).then(([evt, bkgs]) => {
@@ -27,7 +29,6 @@ export default function AdminEventDetailPage() {
   }, [id]);
 
   async function handleDelete() {
-    if (!confirm("Delete this event permanently?")) return;
     setDeleting(true);
     await deleteEvent(id);
     router.push("/admin/dashboard");
@@ -63,7 +64,7 @@ export default function AdminEventDetailPage() {
           <button onClick={() => router.push(`/admin/events/${id}/edit`)} style={{ display: "flex", alignItems: "center", gap: "7px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "10px 20px", cursor: "pointer" }}>
             <Edit2 size={13} /> Edit
           </button>
-          <button onClick={handleDelete} disabled={deleting} style={{ display: "flex", alignItems: "center", gap: "7px", backgroundColor: "rgba(200,115,79,0.12)", color: "#C8734F", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "10px 20px", cursor: "pointer", opacity: deleting ? 0.6 : 1 }}>
+          <button onClick={() => setConfirmOpen(true)} disabled={deleting} style={{ display: "flex", alignItems: "center", gap: "7px", backgroundColor: "rgba(200,115,79,0.12)", color: "#C8734F", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "10px 20px", cursor: "pointer", opacity: deleting ? 0.6 : 1 }}>
             <Trash2 size={13} /> {deleting ? "Deleting…" : "Delete"}
           </button>
         </div>
@@ -178,6 +179,15 @@ export default function AdminEventDetailPage() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Delete this event?"
+        message="The event and all of its bookings will be permanently removed. This cannot be undone."
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

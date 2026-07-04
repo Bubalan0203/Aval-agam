@@ -8,14 +8,14 @@ function formatDate(d: string) {
 }
 
 function minPrice(e: Event) {
-  const prices = e.ticketTypes.map((t) => t.price);
-  const min = Math.min(...prices);
+  if (!e.ticketTypes.length) return "—";
+  const min = Math.min(...e.ticketTypes.map((t) => t.price));
   return min === 0 ? "Free" : `₹${min}`;
 }
 
 export function EventCard({ event }: { event: Event }) {
   const router = useRouter();
-  const isSoldOut = event.ticketTypes.every(t => t.sold >= t.available);
+  const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
 
   return (
     <div

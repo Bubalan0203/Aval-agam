@@ -126,12 +126,20 @@ export default function AdminEventEditPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const updatedTickets: TicketType[] = tickets.filter(t => t.name.trim() && Number(t.available) > 0).map(t => ({
+      id: t.id, name: t.name, price: Number(t.price) || 0,
+      available: Number(t.available) || 0, sold: t.sold,
+    }));
+    if (updatedTickets.length === 0) {
+      setToast({ type: "error", msg: "Add at least one ticket type with a name and quantity." });
+      return;
+    }
+    if (form.startTime && form.endTime && form.endTime <= form.startTime) {
+      setToast({ type: "error", msg: "End time must be after start time." });
+      return;
+    }
     setSaving(true);
     try {
-      const updatedTickets: TicketType[] = tickets.filter(t => t.name).map(t => ({
-        id: t.id, name: t.name, price: Number(t.price) || 0,
-        available: Number(t.available) || 0, sold: t.sold,
-      }));
       await updateEvent(id, {
         title:       form.title,
         description: form.description,
