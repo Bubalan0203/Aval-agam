@@ -86,8 +86,8 @@ export function DoYouFeel() {
           marginTop: '48px',
           lineHeight: 1.5,
         }}>
-          If yes, you are in the{' '}
-          <em style={{ color: '#C8734F', fontStyle: 'italic' }}>right place.</em>
+          If these statements align with you, Aval Agam is the{' '}
+          <em style={{ color: '#C8734F', fontStyle: 'italic' }}>right place to begin.</em>
         </p>
       </div>
     </section>

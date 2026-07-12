@@ -1,9 +1,9 @@
 "use client";
 
 const stats = [
-  { value: "1:1", label: "Personal sessions" },
-  { value: "8–12", label: "Persons per circle" },
-  { value: "100%", label: "Judgement-free space" },
+  { value: "4", label: "Online live or offline workshops — every Saturday, 2:30 to 5:30 PM" },
+  { value: "8", label: "Live 1:1 Inner Clarity sessions each month" },
+  { value: "16", label: "Breath-led Mindful Reset circles each month" },
 ];
 
 export function GentleInvitation() {
@@ -20,7 +20,7 @@ export function GentleInvitation() {
             textTransform: 'uppercase',
             fontWeight: 600,
           }}>
-            SMALL CIRCLES, HELD WITH CARE
+            PERSONAL DEPTH, SUPPORTED BY PRACTICE
           </p>
           <p style={{
             fontFamily: 'Playfair Display, serif',

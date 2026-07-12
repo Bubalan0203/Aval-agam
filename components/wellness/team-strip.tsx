@@ -31,12 +31,9 @@ export function TeamStrip() {
             THE PEOPLE WHO HOLD THE SPACE
           </p>
           <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: 'clamp(28px, 3.5vw, 44px)', lineHeight: 1.25, fontWeight: 600 }}>
-            A collective, not a{' '}
-            <em style={{ color: '#C8734F', fontStyle: 'italic' }}>clinic.</em>
+            Different strengths. One shared{' '}
+            <em style={{ color: '#C8734F', fontStyle: 'italic' }}>intention.</em>
           </h2>
-          <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75, maxWidth: '500px' }}>
-            No single person or method can meet every season of human life. Aval Agam is growing as a multidisciplinary emotional wellness collective.
-          </p>
         </div>
 
         {/* Cards */}
@@ -85,7 +82,7 @@ export function TeamStrip() {
         </div>
 
         <p style={{ fontFamily: 'Playfair Display, serif', fontStyle: 'italic', color: '#2F3328', fontSize: '15px', textAlign: 'center', marginTop: '36px', opacity: 0.7 }}>
-          …alongside a growing circle of movement practitioners, counsellors, breathwork and meditation guides, and visiting facilitators.
+          As the practice grows, Aval Agam will collaborate with movement practitioners, counsellors, breathwork and meditation guides, and visiting facilitators.
         </p>
       </div>
     </section>

@@ -3,9 +3,9 @@
 const listItems = [
   { text: "to pause", highlight: false },
   { text: "to breathe", highlight: false },
-  { text: "to be seen", highlight: true },
+  { text: "to regulate", highlight: true },
   { text: "to reflect", highlight: false },
-  { text: "to belong", highlight: false },
+  { text: "to redirect", highlight: false },
   { text: "to bloom", highlight: false },
 ];
 
@@ -65,13 +65,13 @@ export function WhoItsFor() {
             is for you?
           </h2>
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75 }}>
-            Aval Agam is created for people who are carrying life silently. You do not need to be flexible. You do not need prior experience. You do not need to arrive with all the answers.
+            Aval Agam is created for people who are carrying life silently. Women balancing work and family, mothers holding invisible responsibilities, adults navigating emotional pressure, and families seeking a calmer way to connect.
           </p>
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75 }}>
-            Founded by Brindha Thiyagarajan — with a background in Biotechnology, an M.A. in Yoga for Human Excellence and a Diploma in Psychology — Aval Agam brings together breathwork, mindfulness, meditation, gentle movement, journaling and reflective community practice.
+            You do not need flexibility, previous experience or perfect concentration. You only need a willingness to pause and meet yourself honestly.
           </p>
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75 }}>
-            Whether you are a woman carrying invisible weight, a mother, a student, a family, or a team — this space was made with you in mind.
+            Some people begin with the Mindful Reset Workshop. Some continue through regular group practice. Others choose personal Inner Clarity support. Your starting point can match the season you are in.
           </p>
         </div>
       </div>

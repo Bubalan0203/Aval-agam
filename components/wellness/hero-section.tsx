@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Leaf, Wind } from "lucide-react";
+import { MapPin, Leaf, Sparkles } from "lucide-react";
 
 const HERO_IMAGE = "https://images.unsplash.com/photo-1571935538821-8ecb6b4dea17?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxJbmRpYW4lMjB3b21hbiUyMG1lZGl0YXRpbmclMjBzZXJlbmUlMjB3YXJtJTIwbGlnaHQlMjBsb3R1c3xlbnwxfHx8fDE3ODMwMTM1MDl8MA&ixlib=rb-4.1.0&q=80&w=1080";
 
@@ -35,8 +35,8 @@ export function HeroSection() {
             lineHeight: 1.15,
             fontWeight: 600,
           }}>
-            A soulspace to know,<br />
-            grow &{' '}
+            A soulspace to know yourself,<br />
+            grow with awareness &{' '}
             <em style={{ color: '#C8734F', fontStyle: 'italic' }}>thrive.</em>
           </h1>
 
@@ -48,15 +48,15 @@ export function HeroSection() {
             lineHeight: 1.75,
             maxWidth: '520px',
           }}>
-            The world inside us is often louder than the world outside. We carry thoughts we do not speak, emotions we do not fully understand, roles we move through every day. Aval Agam was born for that return — a gentle space to pause, breathe, listen inward, and slowly come home to yourself.
+            The world inside us is often louder than the world outside. We carry thoughts we do not speak, emotions we do not fully understand, roles we move through every day. Aval Agam was born for that return — a gentle space to pause, breathe, listen inward and return to yourself with greater awareness, steadiness and inner clarity.
           </p>
 
           {/* Info Pills */}
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
             {[
-              { icon: <MapPin size={13} style={{ color: '#C9A25F' }} />, text: 'Coimbatore' },
-              { icon: <Wind size={13} style={{ color: '#C9A25F' }} />, text: 'Women-centered & family-inclusive' },
-              { icon: <Leaf size={13} style={{ color: '#C9A25F' }} />, text: 'Breathwork, mindfulness & reflection' },
+              { icon: <Sparkles size={13} style={{ color: '#C9A25F' }} />, text: 'Non-clinical and psychology-informed' },
+              { icon: <Leaf size={13} style={{ color: '#C9A25F' }} />, text: 'Beginner-friendly' },
+              { icon: <MapPin size={13} style={{ color: '#C9A25F' }} />, text: 'Online and Coimbatore' },
             ].map(({ icon, text }) => (
               <span key={text} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#ffffff', borderRadius: '9999px', padding: '8px 16px', fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', boxShadow: '0 2px 10px rgba(15,51,43,0.07)', whiteSpace: 'nowrap' }}>
                 {icon}{text}
@@ -67,7 +67,7 @@ export function HeroSection() {
           {/* Buttons */}
           <div className="flex flex-wrap items-center gap-4 mt-2">
             <button
-              onClick={() => scrollTo("final-cta")}
+              onClick={() => scrollTo("all-events")}
               style={{
                 backgroundColor: '#0F332B',
                 color: '#FBF4E8',
@@ -82,7 +82,7 @@ export function HeroSection() {
               }}
               className="hover:opacity-90 transition-opacity"
             >
-              BOOK AN INNER CLARITY SESSION
+              BEGIN WITH THE ₹699 MINDFUL RESET WORKSHOP →
             </button>
             <button
               onClick={() => scrollTo("offer")}
@@ -96,7 +96,7 @@ export function HeroSection() {
                 fontWeight: 500,
               }}
             >
-              Explore Group Circles →
+              Explore Aval Agam Programs →
             </button>
           </div>
 
@@ -106,7 +106,7 @@ export function HeroSection() {
               + Gentle
             </span>
             <p style={{ fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', opacity: 0.7, margin: 0 }}>
-              No prior experience needed. You only need the willingness to begin.
+              You do not need to arrive with all the answers. You only need the willingness to look within.
             </p>
           </div>
         </div>

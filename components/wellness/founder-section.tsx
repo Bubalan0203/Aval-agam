@@ -6,8 +6,8 @@ const credentials = [
   "M.A. Yoga for Human Excellence",
   "Diploma in Psychology",
   "B.Tech Biotechnology",
+  "Psychodynamics & Experiential Psychotherapy",
   "Founder · Aval Agam",
-  "Held by a growing practitioner collective",
 ];
 
 export function FounderSection() {
@@ -42,7 +42,7 @@ export function FounderSection() {
         {/* Right — Content */}
         <div className="flex flex-col gap-6 justify-center">
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase', fontWeight: 600 }}>
-            MEET THE FOUNDER
+            HELD BY BRINDHA THIYAGARAJAN
           </p>
           <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#FBF4E8', fontSize: 'clamp(28px, 3.5vw, 44px)', lineHeight: 1.25, fontWeight: 600 }}>
             Walking this path{' '}
@@ -65,7 +65,7 @@ export function FounderSection() {
           </blockquote>
 
           <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.75)', fontSize: '15px', lineHeight: 1.75 }}>
-            With a background in Biotechnology, an M.A. in Yoga for Human Excellence, and a Diploma in Psychology, Brindha brings together mindfulness, breath awareness, journaling, gentle movement and emotional reflection. Aval Agam — meaning Her Inner World — was born from her own journey of coming home to herself.
+            With a B.Tech in Biotechnology, an M.A. in Yoga for Human Excellence and a Diploma in Psychology, she brings together breath awareness, mindfulness, reflective dialogue, journaling and psychology-informed inner work. Her Inner Clarity approach draws from psychodynamic and experiential principles while remaining firmly positioned as non-clinical emotional wellness. Aval Agam — meaning Her Inner World — was born from her own journey of coming home to herself.
           </p>
 
           {/* Credential chips */}
@@ -89,9 +89,6 @@ export function FounderSection() {
             ))}
           </div>
 
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C8734F', fontFamily: 'Poppins, sans-serif', fontSize: '14px', fontWeight: 500, textAlign: 'left', padding: 0, width: 'fit-content' }}>
-            Read the full Founder's Letter →
-          </button>
         </div>
       </div>
     </section>

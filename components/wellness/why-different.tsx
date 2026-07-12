@@ -5,23 +5,23 @@ import { Eye, HandHeart, Leaf, Users } from "lucide-react";
 const features = [
   {
     icon: Eye,
-    title: "Seen, not fixed",
-    text: "You are met as you are, never treated as a problem to solve.",
+    title: "Patterns, not labels",
+    text: "We explore what keeps repeating without reducing you to a diagnosis.",
   },
   {
     icon: HandHeart,
-    title: "Welcomed, not evaluated",
-    text: "No comparison, no judgement, no performance of calmness.",
-  },
-  {
-    icon: Leaf,
-    title: "Supported, not pushed",
-    text: "You grow at your own pace, in your own season.",
+    title: "Experience, not analysis alone",
+    text: "You are invited to notice emotion through the body, breath and present moment — not only explain it intellectually.",
   },
   {
     icon: Users,
-    title: "Together, not alone",
-    text: "Community that reminds you that you are not carrying life by yourself.",
+    title: "Practice, not insight alone",
+    text: "The program combines personal understanding with regular breath-led group practice.",
+  },
+  {
+    icon: Leaf,
+    title: "Pace, not pressure",
+    text: "You are supported in meeting what feels workable, with respect for your readiness and boundaries.",
   },
 ];
 
@@ -37,12 +37,12 @@ export function WhyDifferent() {
         {/* Header */}
         <div className="text-center mb-14 flex flex-col items-center gap-4">
           <p style={{ fontFamily: 'Poppins, sans-serif', color: '#FBF4E8', fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase', fontWeight: 600, opacity: 0.85 }}>
-            WHY AVAL AGAM FEELS DIFFERENT
+            WHY INNER CLARITY FEELS DIFFERENT
           </p>
           <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#FBF4E8', fontSize: 'clamp(28px, 3.5vw, 46px)', lineHeight: 1.25, fontWeight: 600 }}>
-            Here, you are{' '}
-            <em style={{ color: '#0F332B', fontStyle: 'italic' }}>seen</em>
-            , not fixed.
+            You are not treated as a{' '}
+            <em style={{ color: '#0F332B', fontStyle: 'italic' }}>problem</em>
+            {' '}to solve.
           </h2>
           <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.85)', fontSize: '17px', lineHeight: 1.7, maxWidth: '480px' }}>
             We do not believe wellness should feel like another pressure. We believe it should feel like a return.
@@ -82,7 +82,7 @@ export function WhyDifferent() {
         {/* CTA */}
         <div className="flex justify-center">
           <button
-            onClick={() => scrollTo('offer')}
+            onClick={() => scrollTo('final-cta')}
             style={{
               backgroundColor: 'transparent',
               color: '#FBF4E8',
@@ -97,7 +97,7 @@ export function WhyDifferent() {
             }}
             className="hover:bg-[#C9A25F] hover:text-[#0F332B] transition-all"
           >
-            EXPLORE GROUP CIRCLES
+            BOOK YOUR INNER CLARITY SESSION
           </button>
         </div>
       </div>

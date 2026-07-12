@@ -3,9 +3,9 @@
 const scenarios = [
   {
     num: "01",
-    text: "A heavy conversation at home. Instead of reacting, you pause, feel your breath, and respond in a",
-    highlight: "steadier",
-    end: "way. The relationship holds.",
+    text: "A familiar disagreement begins. Instead of immediately defending, withdrawing or overexplaining, you recognise the old response beginning and create a little more",
+    highlight: "space",
+    end: "before speaking.",
   },
   {
     num: "02",
@@ -21,7 +21,7 @@ const scenarios = [
   },
   {
     num: "04",
-    text: "A tired Sunday evening. You journal for ten minutes and finally hear what your inner world is",
+    text: "A difficult emotion returns. Instead of treating it as a problem to remove, you become curious about what it may be protecting, understand the pattern beneath, and finally hear what your inner world is",
     highlight: "asking",
     end: "for.",
   },
@@ -40,8 +40,8 @@ export function ScenariosSection() {
             How it shows up in{' '}
             <em style={{ color: '#C8734F', fontStyle: 'italic' }}>real life.</em>
           </h2>
-          <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '16px', lineHeight: 1.75, maxWidth: '480px' }}>
-            Small scenarios — how this work quietly shows up in the rooms of an ordinary week.
+          <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '12px', letterSpacing: '0.15em', textTransform: 'uppercase', fontWeight: 600 }}>
+            From automatic reaction to greater choice
           </p>
         </div>
 

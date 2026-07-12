@@ -18,20 +18,44 @@ const faqs = [
     a: "No. Aval Agam is a soulspace — a preventive and reflective wellness practice, not a clinical service. It is not a replacement for therapy or medical treatment. If you are working with a therapist or doctor, Aval Agam can be a gentle complementary practice.",
   },
   {
-    q: "What happens in an Inner Clarity session?",
-    a: "An Inner Clarity session is a guided 1:1 experience involving breathwork, reflective conversation, journaling prompts and clarity practices. It is a held, unhurried space — not a coaching session, not a counselling session, but something gently its own.",
+    q: "Can I join only the group circle?",
+    a: "Yes. The Mindful Reset Circle is also available as an independent program with either 8 or 16 sessions per month.",
   },
   {
     q: "Can families and adolescents join the circles?",
     a: "Yes. Aval Agam offers specific circles for adolescent girls and family groups. These are designed with age-appropriate practices that help young people and families develop emotional vocabulary, soften communication and create shared rituals of pause.",
   },
   {
+    q: "What happens in an Inner Clarity session?",
+    a: "An Inner Clarity session is a private, guided space to slow down and understand what may be happening beneath your thoughts, emotions and repeated patterns. The session may begin with gentle breath awareness and grounding, followed by reflective conversation, present-moment emotional observation, body awareness, journaling prompts and psychodynamic-informed exploration. Rather than offering quick advice, the process helps you notice what keeps repeating, what may be influencing your responses and what your inner world may be asking for. You leave with greater awareness, a clearer understanding of your experience and one or two practical directions to carry into daily life. Inner Clarity is a non-clinical emotional wellness program and does not replace psychotherapy, medical care or crisis support.",
+  },
+  {
+    q: "Is Inner Clarity psychotherapy?",
+    a: "No. Inner Clarity is a non-clinical emotional wellness and reflective-development program. It draws from psychodynamic and experiential principles but does not provide diagnosis, psychotherapy, medical treatment or crisis care.",
+  },
+  {
+    q: "What does psychodynamic-informed reflection mean?",
+    a: "It means exploring recurring emotional themes, protective responses, internal conflicts, earlier influences and relationship patterns that may continue to affect present choices.",
+  },
+  {
+    q: "What does experiential work mean?",
+    a: "Experiential work pays attention to what is happening within you during the session — through emotion, body sensations, breath, thoughts and impulses — rather than discussing everything only at an intellectual level.",
+  },
+  {
+    q: "How is neuroplasticity connected to the program?",
+    a: "Neuroplasticity describes the brain and nervous system's capacity to adapt through learning and repeated experience. Inner Clarity does not promise to rewire the brain. The program creates repeated opportunities to notice familiar patterns and practise more intentional responses over time.",
+  },
+  {
+    q: "Why are group circles included in Inner Clarity?",
+    a: "Personal insight may be difficult to carry into everyday life without regular practice. The Mindful Reset Circle provides a breath-led rhythm of regulation, mindfulness, reflection and journaling between 1:1 sessions.",
+  },
+  {
     q: "Do you offer programs for workplaces?",
-    a: "Yes. Aval Agam's Corporate Wellness programs bring breathwork, mindful reset practices and emotional regulation workshops to teams. These are available as half-day intensives, recurring sessions or standalone workshops.",
+    a: "Yes. Aval Agam's Corporate Wellness programs bring breathwork, mindful reset practices and emotional regulation workshops to teams. These are available through corporate pilots, team circles, workshops and selected Inner Clarity support.",
   },
   {
     q: "Where are the sessions held?",
-    a: "Sessions are held at the Aval Agam soulspace in Coimbatore, Tamil Nadu. Some programs are also available online. Please reach out via WhatsApp or email for specific location and scheduling details.",
+    a: "Offline sessions are held at the Aval Agam soulspace in Coimbatore, Tamil Nadu. Our programs are also available online. Please reach out via WhatsApp or email for specific location and scheduling details.",
   },
 ];
 

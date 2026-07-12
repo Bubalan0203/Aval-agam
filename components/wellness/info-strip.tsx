@@ -1,10 +1,10 @@
 "use client";
 
 const items = [
-  { label: "SPACE", value: "A women-centered soulspace" },
-  { label: "PRACTICES", value: "Breath · Movement · Journaling · Mindfulness" },
-  { label: "FORMATS", value: "1:1 Sessions · Circles · Workshops · Corporate" },
-  { label: "PROMISE", value: "Seen, not fixed. Welcomed, not evaluated." },
+  { label: "INNER CLARITY", value: "Psychodynamic-informed reflection and experiential inner work" },
+  { label: "GROUP PRACTICE", value: "Breathwork · Movement · Journaling · Mindfulness" },
+  { label: "OUR METHOD", value: "Regulate · Reflect · Redirect" },
+  { label: "OUR PATHWAYS", value: "Workshop · Mindful Reset Circle · Inner Clarity" },
 ];
 
 export function InfoStrip() {

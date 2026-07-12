@@ -1,6 +1,18 @@
 "use client";
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Phone } from "lucide-react";
+
+const InstagramIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);
+
+const FacebookIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
 import Image from "next/image";
 
 const NAV = [
@@ -70,7 +82,22 @@ export function Footer() {
         </div>
         <div>
           <p style={{ color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "16px" }}>Contact</p>
-          <p style={{ color: "rgba(251,244,232,0.6)", fontSize: "14px", lineHeight: 1.75 }}>hello@avalagam.in<br />Coimbatore, Tamil Nadu</p>
+          <p style={{ color: "rgba(251,244,232,0.6)", fontSize: "14px", lineHeight: 1.75 }}>
+            <a href="tel:+919952697993" style={{ color: "inherit", textDecoration: "none" }}>+91 99526 97993</a><br />
+            <a href="mailto:info@avalagam.com" style={{ color: "inherit", textDecoration: "none" }}>info@avalagam.com</a><br />
+            Coimbatore, Tamil Nadu
+          </p>
+          <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
+            {[
+              { Icon: InstagramIcon, href: "https://instagram.com/avalagam", label: "Instagram" },
+              { Icon: FacebookIcon,  href: "https://facebook.com/avalagam",  label: "Facebook" },
+              { Icon: Phone,         href: "https://wa.me/919952697993",     label: "WhatsApp" },
+            ].map(({ Icon, href, label }) => (
+              <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} style={{ width: "34px", height: "34px", borderRadius: "50%", border: "1px solid rgba(201,162,95,0.4)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C9A25F" }}>
+                <Icon size={14} />
+              </a>
+            ))}
+          </div>
         </div>
       </div>
       <div style={{ borderTop: "1px solid rgba(201,162,95,0.15)" }} className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
