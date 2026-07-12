@@ -101,14 +101,9 @@ export function HeroSection() {
           </div>
 
           {/* Small Note */}
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
-            <span style={{ flexShrink: 0, backgroundColor: '#EEE2D5', color: '#0F332B', fontFamily: 'Poppins, sans-serif', fontSize: '11px', letterSpacing: '0.05em', borderRadius: '9999px', padding: '4px 12px', fontWeight: 500 }}>
-              + Gentle
-            </span>
-            <p style={{ fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', opacity: 0.7, margin: 0 }}>
-              You do not need to arrive with all the answers. You only need the willingness to look within.
-            </p>
-          </div>
+          <p style={{ fontFamily: 'Poppins, sans-serif', fontSize: '13px', color: '#2F3328', opacity: 0.7, margin: 0, marginTop: '4px' }}>
+            You do not need to arrive with all the answers. You only need the willingness to look within.
+          </p>
         </div>
 
         {/* Right — Hero Image */}

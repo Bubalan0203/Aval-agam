@@ -4,8 +4,8 @@ const listItems = [
   { text: "to pause", highlight: false },
   { text: "to breathe", highlight: false },
   { text: "to regulate", highlight: true },
-  { text: "to reflect", highlight: false },
-  { text: "to redirect", highlight: false },
+  { text: "to reflect", highlight: true },
+  { text: "to redirect", highlight: true },
   { text: "to bloom", highlight: false },
 ];
 

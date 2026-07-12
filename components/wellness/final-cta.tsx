@@ -100,7 +100,8 @@ export function FinalCTA() {
         </div>
 
         <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.45)', fontSize: '13px', marginTop: '4px', letterSpacing: '0.05em' }}>
-          Coimbatore · Online Worldwide · Women-centered & family-inclusive · Know, Grow & Thrive — together.
+          Coimbatore · Online Worldwide · Women-centered & family-inclusive<br />
+          Know, Grow & Thrive — together.
         </p>
       </div>
     </section>

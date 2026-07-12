@@ -6,18 +6,21 @@ const team = [
     role: "FOUNDER",
     desc: "Holds the founding vision, wellness philosophy and every client's journey.",
     initials: "BT",
+    photo: "/team/brindha.jpg",
   },
   {
     name: "Dinesh Prabhakaran",
     role: "MARKETING HEAD",
     desc: "Helps the right people and organisations discover Aval Agam.",
     initials: "DP",
+    photo: "/team/dinesh.jpg",
   },
   {
     name: "Divya Shivalingam",
     role: "STRATEGIC GROWTH ADVISOR",
     desc: "Guides growth while protecting the purpose Aval Agam was born from.",
     initials: "DS",
+    photo: "/team/divya.jpg",
   },
 ];
 
@@ -53,20 +56,28 @@ export function TeamStrip() {
                 textAlign: 'center',
               }}
             >
-              {/* Avatar */}
+              {/* Avatar — photo with initials fallback */}
               <div style={{
-                width: '72px',
-                height: '72px',
+                width: '96px',
+                height: '96px',
                 borderRadius: '50%',
                 backgroundColor: '#EEE2D5',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 border: '2px solid rgba(201,162,95,0.3)',
+                overflow: 'hidden',
+                position: 'relative',
               }}>
-                <span style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: '20px', fontWeight: 600 }}>
+                <span style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: '22px', fontWeight: 600 }}>
                   {member.initials}
                 </span>
+                <img
+                  src={member.photo}
+                  alt={member.name}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
               </div>
               <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: '18px', fontWeight: 600 }}>
                 {member.name}
@@ -82,7 +93,7 @@ export function TeamStrip() {
         </div>
 
         <p style={{ fontFamily: 'Playfair Display, serif', fontStyle: 'italic', color: '#2F3328', fontSize: '15px', textAlign: 'center', marginTop: '36px', opacity: 0.7 }}>
-          As the practice grows, Aval Agam will collaborate with movement practitioners, counsellors, breathwork and meditation guides, and visiting facilitators.
+          As the space grows, Aval Agam will collaborate with movement practitioners, counsellors, breathwork and meditation guides, and visiting facilitators.
         </p>
       </div>
     </section>

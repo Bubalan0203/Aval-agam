@@ -1,18 +1,13 @@
 "use client";
-import { useState } from "react";
-import { X, CheckCircle2 } from "lucide-react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 const WHATSAPP = "https://wa.me/919952697993";
+const WHATSAPP_CORPORATE = "https://wa.me/919952697993?text=" + encodeURIComponent("Hi Aval Agam, I'd like to enquire about Corporate Wellness for my team.");
 
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
 
 export function WhatWeOffer() {
-  const [enquiryOpen, setEnquiryOpen] = useState(false);
-
   return (
     <section id="offer" style={{ backgroundColor: '#0F332B' }} className="w-full">
       <div className="max-w-[1440px] mx-auto px-6 lg:px-16 py-20 lg:py-28">
@@ -33,7 +28,7 @@ export function WhatWeOffer() {
           {/* 01 — Mindful Reset Workshop */}
           <Card num="01 · BEGIN HERE" title="Mindful Reset Workshop">
             <p style={bodyStyle}>
-              A ₹699 live workshop introducing breath awareness, gentle movement, mindfulness, journaling and emotional reflection.
+              A ₹699 live online or offline workshop introducing breath awareness, gentle movement, mindfulness, journaling and emotional reflection.
             </p>
             <p style={bodyStyle}>A simple first experience before choosing a longer Aval Agam program.</p>
             <CardLink onClick={() => scrollTo("all-events")}>Explore the Workshop →</CardLink>
@@ -48,12 +43,12 @@ export function WhatWeOffer() {
               {[["8 circles / month", "₹2,500 + 18% GST"], ["16 circles / month", "₹5,000 + 18% GST"]].map(([plan, price]) => (
                 <div key={plan} style={{ backgroundColor: 'rgba(201,162,95,0.08)', border: '1px solid rgba(201,162,95,0.25)', borderRadius: '12px', padding: '14px 16px' }}>
                   <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.7)', fontSize: '12px', marginBottom: '4px' }}>{plan}</p>
-                  <p style={{ fontFamily: 'Playfair Display, serif', color: '#C9A25F', fontSize: '17px', fontWeight: 700 }}>{price}</p>
+                  <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '16px', fontWeight: 700 }}>{price}</p>
                 </div>
               ))}
             </div>
             <p style={{ ...bodyStyle, fontSize: '13px' }}>
-              <strong style={{ color: '#C9A25F' }}>Batch timings</strong> — Monday to Thursday: 6:00–7:00 AM · 7:00–8:00 AM · 10:30–11:30 AM · 5:30–6:30 PM<br />
+              <strong style={{ color: '#C9A25F' }}>Batch timings</strong> — Monday to Thursday: 6:00–7:00 AM · 7:00–8:00 AM · 10:30–11:30 AM · 2:30–3:30 PM · 5:30–6:30 PM<br />
               Each session lasts between 45 minutes and 1 hour.
             </p>
             <CardLink href={WHATSAPP}>Book your Circle →</CardLink>
@@ -64,11 +59,16 @@ export function WhatWeOffer() {
             <p style={bodyStyle}>
               For adults ready to explore recurring emotional patterns through 1:1 psychodynamic-informed and experiential reflective work, supported by regular breath-led group practice.
             </p>
+            <p style={bodyStyle}>
+              The 1:1 sessions are the core part of the program. Group circles are available for clients who feel comfortable joining a shared practice space. If a client prefers private work only, they may skip the group circles.
+            </p>
             <div style={{ backgroundColor: 'rgba(201,162,95,0.08)', border: '1px solid rgba(201,162,95,0.25)', borderRadius: '12px', padding: '14px 16px' }}>
               <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.8)', fontSize: '13px', lineHeight: 1.7 }}>
-                Includes: 8 live 1:1 sessions per month · 16 Mindful Reset group circles per month
+                <strong style={{ color: '#C9A25F' }}>Includes:</strong><br />
+                8 live 1:1 Inner Clarity sessions per month — online or offline, based on client&apos;s availability<br />
+                16 Mindful Reset group circles per month — included as an optional add-on for continued breathwork, mindfulness, journaling and group practice
               </p>
-              <p style={{ fontFamily: 'Playfair Display, serif', color: '#C9A25F', fontSize: '17px', fontWeight: 700, marginTop: '6px' }}>₹20,000 + 18% GST</p>
+              <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '16px', fontWeight: 700, marginTop: '8px' }}>₹20,000 + 18% GST</p>
             </div>
             <CardLink onClick={() => scrollTo("why-different")}>Explore Inner Clarity →</CardLink>
           </Card>
@@ -79,12 +79,10 @@ export function WhatWeOffer() {
               Structured breathwork, mindful reset, gentle movement, reflection and emotional-regulation practices designed for real workdays.
             </p>
             <p style={bodyStyle}>Available through corporate pilots, team circles, workshops and selected Inner Clarity support.</p>
-            <CardLink onClick={() => setEnquiryOpen(true)}>Enquire for Your Team →</CardLink>
+            <CardLink href={WHATSAPP_CORPORATE}>Enquire for Your Team →</CardLink>
           </Card>
         </div>
       </div>
-
-      <EnquiryModal open={enquiryOpen} onClose={() => setEnquiryOpen(false)} />
     </section>
   );
 }
@@ -110,74 +108,4 @@ function CardLink({ children, onClick, href }: { children: React.ReactNode; onCl
   const style: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', color: '#C8734F', fontFamily: 'Poppins, sans-serif', fontSize: '14px', fontWeight: 600, textAlign: 'left', padding: 0, marginTop: 'auto', textDecoration: 'none' };
   if (href) return <a href={href} target="_blank" rel="noopener noreferrer" style={style}>{children}</a>;
   return <button onClick={onClick} style={style}>{children}</button>;
-}
-
-// ── Corporate enquiry form ────────────────────────────────────────────────────
-
-function EnquiryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", message: "" });
-  const [sending, setSending] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState("");
-
-  if (!open) return null;
-
-  function set(k: keyof typeof form, v: string) { setForm(p => ({ ...p, [k]: v })); }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setSending(true);
-    try {
-      await addDoc(collection(db, "enquiries"), { ...form, type: "corporate", createdAt: serverTimestamp() });
-      setDone(true);
-    } catch {
-      setError("Something went wrong. Please try again or reach us on WhatsApp.");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function close() {
-    onClose();
-    setTimeout(() => { setDone(false); setForm({ name: "", company: "", email: "", phone: "", message: "" }); }, 300);
-  }
-
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1.5px solid #EEE2D5', backgroundColor: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: '14px', color: '#2F3328', outline: 'none', boxSizing: 'border-box' };
-
-  return (
-    <div onClick={close} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,51,43,0.5)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#FBF4E8', borderRadius: '20px', width: '100%', maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto', padding: '32px' }}>
-        {done ? (
-          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', padding: '16px 0' }}>
-            <CheckCircle2 size={48} style={{ color: '#0F332B' }} />
-            <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: '22px', fontWeight: 700 }}>Enquiry received!</h3>
-            <p style={{ fontFamily: 'Poppins, sans-serif', color: '#2F3328', fontSize: '14px', lineHeight: 1.7, opacity: 0.75 }}>Thank you, {form.name.split(" ")[0]}. Our team will get back to you shortly to plan wellness for your workplace.</p>
-            <button onClick={close} style={{ backgroundColor: '#0F332B', color: '#FBF4E8', fontFamily: 'Poppins, sans-serif', fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', border: 'none', borderRadius: '9999px', padding: '12px 28px', cursor: 'pointer', marginTop: '6px' }}>CLOSE</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
-              <div>
-                <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>Corporate Wellness</p>
-                <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#0F332B', fontSize: '22px', fontWeight: 700 }}>Enquire for your team</h3>
-              </div>
-              <button onClick={close} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2F3328', opacity: 0.5 }}><X size={18} /></button>
-            </div>
-            <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input required placeholder="Your name" value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle} />
-              <input required placeholder="Company / organisation" value={form.company} onChange={e => set('company', e.target.value)} style={inputStyle} />
-              <input required type="email" placeholder="Work email" value={form.email} onChange={e => set('email', e.target.value)} style={inputStyle} />
-              <input required type="tel" placeholder="Phone number" value={form.phone} onChange={e => set('phone', e.target.value)} style={inputStyle} />
-              <textarea rows={3} placeholder="Tell us a little about your team (optional)" value={form.message} onChange={e => set('message', e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
-              {error && <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C8734F', fontSize: '13px' }}>{error}</p>}
-              <button type="submit" disabled={sending} style={{ backgroundColor: '#0F332B', color: '#FBF4E8', fontFamily: 'Poppins, sans-serif', fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', border: 'none', borderRadius: '9999px', padding: '14px', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.7 : 1 }}>
-                {sending ? 'SENDING…' : 'SEND ENQUIRY'}
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-    </div>
-  );
 }

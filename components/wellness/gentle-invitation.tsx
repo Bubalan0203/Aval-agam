@@ -2,7 +2,7 @@
 
 const stats = [
   { value: "4", label: "Online live or offline workshops — every Saturday, 2:30 to 5:30 PM" },
-  { value: "8", label: "Live 1:1 Inner Clarity sessions each month" },
+  { value: "8", label: "Live 1:1 Inner Clarity sessions each month — online or offline" },
   { value: "16", label: "Breath-led Mindful Reset circles each month" },
 ];
 

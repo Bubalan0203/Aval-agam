@@ -5,7 +5,6 @@ const FOUNDER_IMAGE = "https://images.unsplash.com/photo-1758274526589-e33e9707d
 const credentials = [
   "M.A. Yoga for Human Excellence",
   "Diploma in Psychology",
-  "B.Tech Biotechnology",
   "Psychodynamics & Experiential Psychotherapy",
   "Founder · Aval Agam",
 ];
@@ -65,7 +64,13 @@ export function FounderSection() {
           </blockquote>
 
           <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.75)', fontSize: '15px', lineHeight: 1.75 }}>
-            With a B.Tech in Biotechnology, an M.A. in Yoga for Human Excellence and a Diploma in Psychology, she brings together breath awareness, mindfulness, reflective dialogue, journaling and psychology-informed inner work. Her Inner Clarity approach draws from psychodynamic and experiential principles while remaining firmly positioned as non-clinical emotional wellness. Aval Agam — meaning Her Inner World — was born from her own journey of coming home to herself.
+            With a B.Tech in Biotechnology, an M.A. in Yoga for Human Excellence and a Diploma in Psychology, she brings together breath awareness, mindfulness, reflective dialogue, journaling and psychology-informed inner work.
+          </p>
+          <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.75)', fontSize: '15px', lineHeight: 1.75 }}>
+            Her Inner Clarity approach draws from psychodynamic and experiential principles while remaining firmly positioned as non-clinical emotional wellness.
+          </p>
+          <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.75)', fontSize: '15px', lineHeight: 1.75 }}>
+            Aval Agam — meaning Her Inner World — was born from her own journey of coming home to herself.
           </p>
 
           {/* Credential chips */}

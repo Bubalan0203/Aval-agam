@@ -41,6 +41,7 @@ export type Booking = {
   quantity:    number;
   amount:      number;
   paymentMethod?: string;
+  paymentId?:  string;
   bookedAt?:   Timestamp;
 };
 

@@ -2,34 +2,50 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, Smartphone, CreditCard, Landmark, Wallet } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, CreditCard, Zap } from "lucide-react";
 import emailjs from "@emailjs/browser";
 import { createBooking } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 
-const EMAILJS_SERVICE_ID  = "service_29vl9xk";
-const EMAILJS_TEMPLATE_ID = "template_vjypp5e";
-const EMAILJS_PUBLIC_KEY  = "2_h1Ru1ihbvs3-2yg";
+const EMAILJS_SERVICE_ID  = "service_ccmza7t";
+const EMAILJS_TEMPLATE_ID = "template_ro58gnx";
+const EMAILJS_PUBLIC_KEY  = "F8QjNtOzTSS8DVitl";
 
 type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void };
 type Step = "form" | "success" | "error";
 
 const PAYMENT_METHODS = [
-  { id: "upi",        label: "UPI",         Icon: Smartphone },
-  { id: "card",       label: "Card",        Icon: CreditCard },
-  { id: "netbanking", label: "Net Banking", Icon: Landmark   },
-  { id: "wallet",     label: "Wallet",      Icon: Wallet     },
+  { id: "razorpay", label: "Razorpay", Icon: Zap,        disabled: false },
+  { id: "stripe",   label: "Stripe",   Icon: CreditCard, disabled: true  },
 ];
+
+// Loads Razorpay's checkout.js once and reuses it afterwards
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && (window as unknown as { Razorpay?: unknown }).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export function BookingModal({ event, open, onOpenChange }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
   // Pre-select the first ticket that still has seats, not just the first one
   const firstAvailable = event.ticketTypes.find(t => t.sold < t.available) ?? event.ticketTypes[0];
-  const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: firstAvailable?.id ?? "", quantity: 1, paymentMethod: "upi" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: firstAvailable?.id ?? "", quantity: 1, paymentMethod: "razorpay" });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [sending, setSending]   = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // While the Razorpay window is open, our dialog must release its focus trap
+  // so the user can type inside the payment form
+  const [payWindowOpen, setPayWindowOpen] = useState(false);
 
   const selectedTicket = event.ticketTypes.find((t) => t.id === form.ticketTypeId);
   const remaining = selectedTicket ? Math.max(0, selectedTicket.available - selectedTicket.sold) : 0;
@@ -45,12 +61,74 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
     return Object.keys(e).length === 0;
   }
 
+  /** Opens Razorpay checkout; resolves with the payment id once verified, null if cancelled */
+  async function collectPayment(): Promise<string | null> {
+    const loaded = await loadRazorpayScript();
+    if (!loaded) throw new Error("PAYMENT_LOAD_FAILED");
+
+    const orderRes = await fetch("/api/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: total, receipt: `evt_${event.id.slice(0, 12)}_${Date.now()}` }),
+    });
+    if (!orderRes.ok) throw new Error("ORDER_FAILED");
+    const { orderId } = await orderRes.json();
+
+    return new Promise((resolve, reject) => {
+      const RazorpayCtor = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void; on: (ev: string, cb: (r: unknown) => void) => void } }).Razorpay;
+      const rzp = new RazorpayCtor({
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        order_id: orderId,
+        name: "Aval Agam",
+        description: event.title,
+        prefill: { name: form.name, email: form.email, contact: form.phone },
+        theme: { color: "#0F332B" },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+            const data = await verifyRes.json();
+            if (data.verified) resolve(response.razorpay_payment_id);
+            else reject(new Error("VERIFY_FAILED"));
+          } catch {
+            reject(new Error("VERIFY_FAILED"));
+          }
+        },
+        modal: { ondismiss: () => resolve(null) },
+      });
+      rzp.on("payment.failed", () => reject(new Error("PAYMENT_FAILED")));
+      rzp.open();
+    });
+  }
+
   async function handlePay() {
     if (!validate()) return;
     setSending(true);
     setErrorMsg("");
+
+    // 1. Collect payment first for paid tickets
+    let paymentId: string | null = null;
+    if (total > 0) {
+      try {
+        paymentId = await collectPayment();
+        if (paymentId === null) { setSending(false); return; } // user closed the payment window
+      } catch (err) {
+        const code = err instanceof Error ? err.message : "";
+        setErrorMsg(
+          code === "PAYMENT_FAILED" ? "Your payment could not be completed. No money was deducted — please try again."
+          : code === "VERIFY_FAILED" ? "We couldn't verify your payment. If money was deducted, please contact us on WhatsApp."
+          : "We couldn't start the payment. Please check your connection and try again.");
+        setSending(false);
+        setStep("error");
+        return;
+      }
+    }
+
     try {
-      // 1. Save the booking first (atomic — fails if seats ran out)
+      // 2. Save the booking (atomic — fails if seats ran out)
       await createBooking({
         eventId:      event.id,
         eventTitle:   event.title,
@@ -61,19 +139,20 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
         ticketTypeId: form.ticketTypeId,
         quantity:     form.quantity,
         amount:       total,
-        paymentMethod: total > 0 ? form.paymentMethod : "free",
+        paymentMethod: total > 0 ? "razorpay" : "free",
+        ...(paymentId ? { paymentId } : {}),
       });
     } catch (err) {
       const code = err instanceof Error ? err.message : "";
       setErrorMsg(code === "SOLD_OUT"
-        ? "Sorry, not enough seats are left for this ticket. Please pick a lower quantity or another ticket."
-        : "We couldn't complete your booking. Please try again.");
+        ? "Sorry, not enough seats are left for this ticket. If you completed a payment, contact us on WhatsApp for a refund."
+        : "We couldn't complete your booking. If you completed a payment, contact us on WhatsApp.");
       setSending(false);
       setStep("error");
       return;
     }
 
-    // 2. Send the email — booking is already saved, so a mail failure is not fatal
+    // 3. Send the email — booking is already saved, so a mail failure is not fatal
     try {
       await emailjs.send(
         EMAILJS_SERVICE_ID,
@@ -198,13 +277,13 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                 </Field>
                 {total > 0 && (
                   <Field label="Payment Method" icon={<CreditCard size={14} />}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
-                      {PAYMENT_METHODS.map(({ id, label, Icon }) => {
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+                      {PAYMENT_METHODS.map(({ id, label, Icon, disabled }) => {
                         const selected = form.paymentMethod === id;
                         return (
-                          <button key={id} type="button" onClick={() => setForm({ ...form, paymentMethod: id })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", padding: "12px 6px", borderRadius: "10px", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", cursor: "pointer" }}>
+                          <button key={id} type="button" disabled={disabled} onClick={() => !disabled && setForm({ ...form, paymentMethod: id })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", padding: "12px 6px", borderRadius: "10px", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1 }}>
                             <Icon size={18} style={{ color: selected ? "#0F332B" : "#C9A25F" }} />
-                            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: selected ? 600 : 400, color: "#0F332B", whiteSpace: "nowrap" }}>{label}</span>
+                            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: selected ? 600 : 400, color: "#0F332B", whiteSpace: "nowrap" }}>{label}{disabled ? " · Coming soon" : ""}</span>
                           </button>
                         );
                       })}
