@@ -20,8 +20,7 @@ import { TeamStrip } from "@/components/wellness/team-strip";
 import { GentleInvitation } from "@/components/wellness/gentle-invitation";
 import { FAQSection } from "@/components/wellness/faq-section";
 import { FinalCTA } from "@/components/wellness/final-cta";
-
-const CATEGORIES = ["All", "Author Talk", "Workshop", "Panel Event", "Open Mic", "Family", "Retreat"];
+import { EVENT_CATEGORIES } from "@/lib/event-options";
 
 export default function HomePage() {
   const [category, setCategory] = useState("All");
@@ -56,7 +55,7 @@ export default function HomePage() {
 
           {/* Category filters */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "32px" }}>
-            {CATEGORIES.map((cat) => (
+            {EVENT_CATEGORIES.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}

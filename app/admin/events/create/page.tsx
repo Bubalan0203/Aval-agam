@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2, Upload, X, Eye, CheckCircle2, AlertCircle } from "lucide-react";
 import { createEvent } from "@/lib/firestore";
+import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
 
 type TicketDraft = { id: string; name: string; available: string; price: string };
 function newTicket(): TicketDraft { return { id: crypto.randomUUID(), name: "", available: "", price: "" }; }
@@ -176,7 +177,7 @@ export default function AdminEventCreatePage() {
             <Label>Category</Label>
             <select value={form.category} onChange={e => set("category", e.target.value)} style={inputStyle}>
               <option value="">Select…</option>
-              {["Author Talk","Workshop","Panel Event","Open Mic","Family","Retreat"].map(c => <option key={c}>{c}</option>)}
+              {EVENT_CATEGORY_OPTIONS.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
         </div>
@@ -192,8 +193,20 @@ export default function AdminEventCreatePage() {
           <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "16px", fontWeight: 700, marginBottom: "14px" }}>Date &amp; Time</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div><Label>Event Date</Label><input type="date" min={new Date().toISOString().split("T")[0]} value={form.date} onChange={e => set("date", e.target.value)} required style={inputStyle} /></div>
-            <div><Label>Start Time</Label><input type="time" value={form.startTime} onChange={e => set("startTime", e.target.value)} style={inputStyle} /></div>
-            <div><Label>End Time</Label><input type="time" value={form.endTime} onChange={e => set("endTime", e.target.value)} style={inputStyle} /></div>
+            <div>
+              <Label>Start Time</Label>
+              <select value={form.startTime} onChange={e => set("startTime", e.target.value)} style={inputStyle}>
+                <option value="">Select…</option>
+                {EVENT_TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label>End Time</Label>
+              <select value={form.endTime} onChange={e => set("endTime", e.target.value)} style={inputStyle}>
+                <option value="">Select…</option>
+                {EVENT_TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
