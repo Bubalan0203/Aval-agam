@@ -50,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }} onClick={() => router.push("/admin/dashboard")}>
             <Image src="/logo.png" alt="Aval Agam" width={36} height={36} style={{ objectFit: "contain" }} />
             <div>
-              <p style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "15px", fontWeight: 700, lineHeight: 1.1 }}>Aval Agam</p>
+              <p style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "15px", fontWeight: 700, lineHeight: 1.1 }}>AVAL AGAM</p>
               <p style={{ color: "#C9A25F", fontSize: "9px", letterSpacing: "0.15em", textTransform: "uppercase" }}>Admin Panel</p>
             </div>
           </div>

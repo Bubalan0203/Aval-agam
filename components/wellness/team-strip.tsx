@@ -6,21 +6,21 @@ const team = [
     role: "FOUNDER",
     desc: "Holds the founding vision, wellness philosophy and every client's journey.",
     initials: "BT",
-    photo: "/team/brindha.jpg",
+    photo: "/Images/Brinda.jpg",
   },
   {
     name: "Dinesh Prabhakaran",
     role: "MARKETING HEAD",
     desc: "Helps the right people and organisations discover Aval Agam.",
     initials: "DP",
-    photo: "/team/dinesh.jpg",
+    photo: "/Images/dinesh.jpeg",
   },
   {
     name: "Divya Shivalingam",
     role: "STRATEGIC GROWTH ADVISOR",
     desc: "Guides growth while protecting the purpose Aval Agam was born from.",
     initials: "DS",
-    photo: "/team/divya.jpg",
+    photo: "/Images/divya.jpeg",
   },
 ];
 

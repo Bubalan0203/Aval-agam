@@ -1,6 +1,6 @@
 "use client";
 
-const FOUNDER_IMAGE = "https://images.unsplash.com/photo-1758274526589-e33e9707ddca?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHdlbGxuZXNzJTIwcG9ydHJhaXQlMjB5b2dhJTIwY2FsbSUyMHByb2Zlc3Npb25hbHxlbnwxfHx8fDE3ODMwMTM1MTR8MA&ixlib=rb-4.1.0&q=80&w=1080";
+const FOUNDER_IMAGE = "/Images/yourguide.png";
 
 const credentials = [
   "M.A. Yoga for Human Excellence",

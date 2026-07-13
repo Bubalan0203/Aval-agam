@@ -41,7 +41,7 @@ export function Navbar() {
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => scrollTo("about")}>
           <Image src="/logo.png" alt="Aval Agam" width={48} height={48} style={{ objectFit: "contain" }} />
           <div>
-            <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "17px", fontWeight: 700, lineHeight: 1.1 }}>Aval Agam</p>
+            <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "17px", fontWeight: 700, lineHeight: 1.1 }}>AVAL AGAM</p>
             <p style={{ color: "#C9A25F", fontSize: "10px", letterSpacing: "0.15em", textTransform: "uppercase" }}>Her Inner World</p>
           </div>
         </div>
@@ -77,7 +77,7 @@ export function Footer() {
         <div>
           <div className="flex items-center gap-3 mb-4">
             <Image src="/logo.png" alt="Aval Agam" width={34} height={34} style={{ objectFit: "contain", backgroundColor: "#FBF4E8", borderRadius: "50%", padding: "3px" }} />
-            <p style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "18px", fontWeight: 700 }}>Aval Agam</p>
+            <p style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "18px", fontWeight: 700 }}>AVAL AGAM</p>
           </div>
           <p style={{ color: "rgba(251,244,232,0.6)", fontSize: "14px", lineHeight: 1.75 }}>A soulspace to know, grow &amp; thrive — wellness circles, workshops and mindful events in Coimbatore.</p>
         </div>

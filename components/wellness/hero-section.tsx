@@ -2,7 +2,7 @@
 
 import { MapPin, Leaf, Sparkles } from "lucide-react";
 
-const HERO_IMAGE = "https://images.unsplash.com/photo-1571935538821-8ecb6b4dea17?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxJbmRpYW4lMjB3b21hbiUyMG1lZGl0YXRpbmclMjBzZXJlbmUlMjB3YXJtJTIwbGlnaHQlMjBsb3R1c3xlbnwxfHx8fDE3ODMwMTM1MDl8MA&ixlib=rb-4.1.0&q=80&w=1080";
+const HERO_IMAGE = "/Images/heromainimage.png";
 
 export function HeroSection() {
   const scrollTo = (id: string) => {
