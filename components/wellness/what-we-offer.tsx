@@ -40,7 +40,7 @@ export function WhatWeOffer() {
               A regular emotional wellness circle for people who want consistency, guided practice and the support of the community. Each session begins with breathwork and includes mindfulness, gentle movement, reflection and journaling to help you regulate, reflect and reconnect.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {[["8 circles / month", "₹2,500 + 18% GST"], ["16 circles / month", "₹5,000 + 18% GST"]].map(([plan, price]) => (
+              {[["8 circles / month", "₹2,500"], ["16 circles / month", "₹5,000"]].map(([plan, price]) => (
                 <div key={plan} style={{ backgroundColor: 'rgba(201,162,95,0.08)', border: '1px solid rgba(201,162,95,0.25)', borderRadius: '12px', padding: '14px 16px' }}>
                   <p style={{ fontFamily: 'Poppins, sans-serif', color: 'rgba(251,244,232,0.7)', fontSize: '12px', marginBottom: '4px' }}>{plan}</p>
                   <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '16px', fontWeight: 700 }}>{price}</p>
@@ -68,7 +68,7 @@ export function WhatWeOffer() {
                 8 live 1:1 Inner Clarity sessions per month — online or offline, based on client&apos;s availability<br />
                 16 Mindful Reset group circles per month — included as an optional add-on for continued breathwork, mindfulness, journaling and group practice
               </p>
-              <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '16px', fontWeight: 700, marginTop: '8px' }}>₹20,000 + 18% GST</p>
+              <p style={{ fontFamily: 'Poppins, sans-serif', color: '#C9A25F', fontSize: '16px', fontWeight: 700, marginTop: '8px' }}>₹20,000</p>
             </div>
             <CardLink onClick={() => scrollTo("why-different")}>Explore Inner Clarity →</CardLink>
           </Card>
