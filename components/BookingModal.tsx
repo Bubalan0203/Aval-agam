@@ -1,6 +1,6 @@
 "use client";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, CreditCard, Zap } from "lucide-react";
 import emailjs from "@emailjs/browser";
@@ -19,19 +19,27 @@ const PAYMENT_METHODS = [
   { id: "stripe",   label: "Stripe",   Icon: CreditCard, disabled: true  },
 ];
 
-// Loads Razorpay's checkout.js once and reuses it afterwards
+// Loads Razorpay's checkout.js once and reuses it afterwards. The promise is cached at
+// module level so two overlapping calls share one <script> tag instead of racing.
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
 function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window !== "undefined" && (window as unknown as { Razorpay?: unknown }).Razorpay) {
-      resolve(true);
-      return;
-    }
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if ((window as unknown as { Razorpay?: unknown }).Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise<boolean>((resolve) => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
     script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+    script.onerror = () => {
+      razorpayScriptPromise = null; // let the next attempt retry
+      resolve(false);
+    };
     document.body.appendChild(script);
   });
+  return razorpayScriptPromise;
 }
 
 export function BookingModal({ event, open, onOpenChange }: Props) {
@@ -46,6 +54,13 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   // While the Razorpay window is open, our dialog must release its focus trap
   // so the user can type inside the payment form
   const [payWindowOpen, setPayWindowOpen] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("Confirming your booking…");
+
+  // Warm up checkout.js as soon as the modal opens, so the round-trip to Razorpay's CDN
+  // happens while the user is still filling the form rather than after they press Pay.
+  useEffect(() => {
+    if (open) void loadRazorpayScript();
+  }, [open]);
 
   const selectedTicket = event.ticketTypes.find((t) => t.id === form.ticketTypeId);
   const remaining = selectedTicket ? Math.max(0, selectedTicket.available - selectedTicket.sold) : 0;
@@ -63,19 +78,31 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
 
   /** Opens Razorpay checkout; resolves with the payment id once verified, null if cancelled */
   async function collectPayment(): Promise<string | null> {
-    const loaded = await loadRazorpayScript();
-    if (!loaded) throw new Error("PAYMENT_LOAD_FAILED");
+    // The script download and the order creation don't depend on each other — awaiting
+    // them one after the other just adds the two latencies together before the payment
+    // window can appear, so run both at once.
+    const orderReq = (async () => {
+      const res = await fetch("/api/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: total, receipt: `evt_${event.id.slice(0, 12)}_${Date.now()}` }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error("ORDER_FAILED");
+      return res.json() as Promise<{ orderId: string }>;
+    })();
 
-    const orderRes = await fetch("/api/create-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: total, receipt: `evt_${event.id.slice(0, 12)}_${Date.now()}` }),
-    });
-    if (!orderRes.ok) throw new Error("ORDER_FAILED");
-    const { orderId } = await orderRes.json();
+    const [loaded, { orderId }] = await Promise.all([loadRazorpayScript(), orderReq]);
+    if (!loaded) throw new Error("PAYMENT_LOAD_FAILED");
 
     return new Promise((resolve, reject) => {
       const RazorpayCtor = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void; on: (ev: string, cb: (r: unknown) => void) => void } }).Razorpay;
+      // Every exit path must put the dialog back into modal mode, otherwise it stays
+      // dismissable-on-outside-click after the payment window is gone.
+      const settle = (fn: () => void) => {
+        setPayWindowOpen(false);
+        fn();
+      };
       const rzp = new RazorpayCtor({
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         order_id: orderId,
@@ -91,15 +118,21 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
               body: JSON.stringify(response),
             });
             const data = await verifyRes.json();
-            if (data.verified) resolve(response.razorpay_payment_id);
-            else reject(new Error("VERIFY_FAILED"));
+            if (data.verified) settle(() => resolve(response.razorpay_payment_id));
+            else settle(() => reject(new Error("VERIFY_FAILED")));
           } catch {
-            reject(new Error("VERIFY_FAILED"));
+            settle(() => reject(new Error("VERIFY_FAILED")));
           }
         },
-        modal: { ondismiss: () => resolve(null) },
+        modal: { ondismiss: () => settle(() => resolve(null)) },
       });
-      rzp.on("payment.failed", () => reject(new Error("PAYMENT_FAILED")));
+      rzp.on("payment.failed", () => settle(() => reject(new Error("PAYMENT_FAILED"))));
+
+      // Radix's modal Dialog sets `pointer-events: none` on <body> and re-enables it only
+      // inside its own portal. Razorpay mounts checkout as a direct child of <body>, so it
+      // inherits that and every click falls straight through to the form behind it — the
+      // window looks live but nothing is clickable. Leave modal mode while it's up.
+      setPayWindowOpen(true);
       rzp.open();
     });
   }
@@ -108,12 +141,14 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
     if (!validate()) return;
     setSending(true);
     setErrorMsg("");
+    setBusyLabel(total > 0 ? "Opening secure payment…" : "Confirming your booking…");
 
     // 1. Collect payment first for paid tickets
     let paymentId: string | null = null;
     if (total > 0) {
       try {
         paymentId = await collectPayment();
+        setBusyLabel("Confirming your booking…");
         if (paymentId === null) { setSending(false); return; } // user closed the payment window
       } catch (err) {
         const code = err instanceof Error ? err.message : "";
@@ -179,6 +214,9 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
     setStep("success");
   }
   function handleClose() {
+    // Non-modal mode lets outside clicks reach us; ignore them while Razorpay is up so a
+    // tap on its backdrop can't tear this dialog down mid-payment.
+    if (payWindowOpen) return;
     if (step === "success") {
       onOpenChange(false);
       router.push("/");
@@ -189,10 +227,13 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleClose}>
+    <Dialog.Root open={open} onOpenChange={handleClose} modal={!payWindowOpen}>
       <Dialog.Portal>
         <Dialog.Overlay style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,51,43,0.45)", zIndex: 50, backdropFilter: "blur(4px)" }} />
-        <Dialog.Content style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: "#FBF4E8", borderRadius: "20px", padding: "0", width: "min(560px, 95vw)", maxHeight: "90vh", overflowY: "auto", zIndex: 51, boxShadow: "0 20px 60px rgba(15,51,43,0.25)" }}>
+        <Dialog.Content
+          onInteractOutside={(e) => { if (payWindowOpen) e.preventDefault(); }}
+          onEscapeKeyDown={(e) => { if (payWindowOpen) e.preventDefault(); }}
+          style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: "#FBF4E8", borderRadius: "20px", padding: "0", width: "min(560px, 95vw)", maxHeight: "90vh", overflowY: "auto", zIndex: 51, boxShadow: "0 20px 60px rgba(15,51,43,0.25)" }}>
           <div style={{ position: "relative" }}>
           {step === "success" ? (
             <div style={{ padding: "48px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
@@ -225,7 +266,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
               {sending && (
                 <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(251,244,232,0.85)", borderRadius: "20px", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "14px" }}>
                   <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: "3px solid #EEE2D5", borderTopColor: "#0F332B", animation: "spin 0.8s linear infinite" }} />
-                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 600 }}>Confirming your booking…</p>
+                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 600 }}>{busyLabel}</p>
                   <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
               )}
@@ -295,7 +336,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                   <span style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>{total === 0 ? "Free" : `₹${total.toLocaleString()}`}</span>
                 </div>
                 <button onClick={handlePay} disabled={sending} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "16px", cursor: sending ? "not-allowed" : "pointer", textTransform: "uppercase", opacity: sending ? 0.7 : 1 }}>
-                  {sending ? "SENDING…" : total === 0 ? "CONFIRM RESERVATION" : `PAY ₹${total.toLocaleString()}`}
+                  {sending ? "PLEASE WAIT…" : total === 0 ? "CONFIRM RESERVATION" : `PAY ₹${total.toLocaleString()}`}
                 </button>
               </div>
             </>

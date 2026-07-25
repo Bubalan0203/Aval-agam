@@ -75,7 +75,11 @@ export default function AdminEventDetailPage() {
 
         {/* Hero image */}
         <div style={{ borderRadius: "16px", overflow: "hidden", aspectRatio: "16/9" }}>
-          <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          {event.image ? (
+            <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", backgroundColor: "#EEE2D5" }} />
+          )}
         </div>
 
         {/* Details */}

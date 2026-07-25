@@ -73,7 +73,11 @@ export default function EventDetailsPage() {
 
       {/* Hero banner */}
       <section style={{ position: "relative", height: "clamp(280px, 40vw, 460px)", overflow: "hidden" }}>
-        <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {event.image ? (
+          <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", backgroundColor: "#0F332B" }} />
+        )}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(15,51,43,0.25) 0%, rgba(15,51,43,0.8) 100%)" }} />
         <div style={{ position: "absolute", bottom: "36px", left: 0, right: 0, padding: "0 40px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>

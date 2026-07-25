@@ -24,7 +24,13 @@ export function EventCard({ event }: { event: Event }) {
       className="hover:shadow-lg hover:-translate-y-1"
     >
       <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden" }}>
-        <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {/* An empty src makes the browser re-request the current page as an image, so only
+            render the tag when we actually have a URL */}
+        {event.image ? (
+          <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", backgroundColor: "#EEE2D5" }} />
+        )}
         <span style={{ position: "absolute", top: "12px", left: "12px", backgroundColor: isSoldOut ? "rgba(47,51,40,0.75)" : "rgba(15,51,43,0.75)", color: "#FBF4E8", backdropFilter: "blur(8px)", fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: "9999px", padding: "4px 12px" }}>
           {isSoldOut ? "Sold Out" : "Available"}
         </span>

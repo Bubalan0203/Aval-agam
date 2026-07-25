@@ -123,7 +123,11 @@ export default function AdminDashboardPage() {
           return (
             <div key={event.id} onClick={() => router.push(`/admin/events/${event.id}`)} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px 80px 60px", gap: "0", padding: "16px 20px", alignItems: "center", borderBottom: idx < filtered.length - 1 ? "1px solid #EEE2D5" : "none", cursor: "pointer" }} className="hover:bg-[#EEE2D530]">
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <img src={event.image} alt={event.title} style={{ width: "44px", height: "44px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }} />
+                {event.image ? (
+                  <img src={event.image} alt={event.title} style={{ width: "44px", height: "44px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: "44px", height: "44px", borderRadius: "10px", backgroundColor: "#EEE2D5", flexShrink: 0 }} />
+                )}
                 <div>
                   <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 600 }}>{event.title}</p>
                   <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", opacity: 0.55 }}>{event.location}</p>
