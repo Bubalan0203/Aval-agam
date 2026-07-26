@@ -17,6 +17,7 @@ import { WhatWeOffer } from "@/components/wellness/what-we-offer";
 import { WhyDifferent } from "@/components/wellness/why-different";
 import { FounderSection } from "@/components/wellness/founder-section";
 import { TeamStrip } from "@/components/wellness/team-strip";
+import { Testimonials } from "@/components/wellness/testimonials";
 import { GentleInvitation } from "@/components/wellness/gentle-invitation";
 import { FAQSection } from "@/components/wellness/faq-section";
 import { FinalCTA } from "@/components/wellness/final-cta";
@@ -87,6 +88,7 @@ export default function HomePage() {
       <WhyDifferent />
       <FounderSection />
       <TeamStrip />
+      <Testimonials />
       <GentleInvitation />
       <FAQSection />
       <FinalCTA />

@@ -60,7 +60,7 @@ export default function EventDetailsPage() {
     return (
       <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}>
         <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px" }}>Event not found</p>
-        <button onClick={() => router.push("/")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "12px 24px", cursor: "pointer" }}>Back to Events</button>
+        <button type="button" onClick={() => router.push("/#all-events")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "12px 24px", cursor: "pointer" }}>Back to Events</button>
       </div>
     );
   }
@@ -86,7 +86,7 @@ export default function EventDetailsPage() {
           </div>
           <h1 style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "clamp(28px, 4vw, 52px)", fontWeight: 700, lineHeight: 1.2 }}>{event.title}</h1>
         </div>
-        <button onClick={() => router.push("/")} style={{ position: "absolute", top: "24px", left: "24px", display: "flex", alignItems: "center", gap: "8px", backgroundColor: "rgba(251,244,232,0.15)", backdropFilter: "blur(8px)", color: "#FBF4E8", fontSize: "13px", fontWeight: 500, border: "1px solid rgba(251,244,232,0.25)", borderRadius: "9999px", padding: "8px 18px", cursor: "pointer" }}>
+        <button type="button" onClick={() => router.push("/#all-events")} style={{ position: "absolute", top: "24px", left: "24px", display: "flex", alignItems: "center", gap: "8px", backgroundColor: "rgba(251,244,232,0.15)", backdropFilter: "blur(8px)", color: "#FBF4E8", fontSize: "13px", fontWeight: 500, border: "1px solid rgba(251,244,232,0.25)", borderRadius: "9999px", padding: "8px 18px", cursor: "pointer" }}>
           <ArrowLeft size={14} /> All Events
         </button>
       </section>
@@ -167,7 +167,7 @@ export default function EventDetailsPage() {
         <div style={{ maxWidth: "1300px", margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
             <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>More events you might enjoy</h2>
-            <button onClick={() => router.push("/")} style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", cursor: "pointer", color: "#C8734F", fontSize: "13px", fontWeight: 600 }}>See all →</button>
+            <button type="button" onClick={() => router.push("/#all-events")} style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", cursor: "pointer", color: "#C8734F", fontSize: "13px", fontWeight: 600 }}>See all →</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {otherEvents.map((e) => <EventCard key={e.id} event={e} />)}

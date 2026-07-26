@@ -1,5 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Menu, X, Phone } from "lucide-react";
 
 const InstagramIcon = ({ size = 14 }: { size?: number }) => (
@@ -22,48 +24,129 @@ const YouTubeIcon = ({ size = 14 }: { size?: number }) => (
 );
 import Image from "next/image";
 
-const NAV = [
+export const WHATSAPP_URL = "https://wa.me/919952697993";
+
+type NavItem = { label: string; anchor?: string; external?: string };
+
+const NAV: NavItem[] = [
   { label: "Events", anchor: "all-events" },
   { label: "About", anchor: "about" },
-  { label: "Contact", anchor: "final-cta" },
+  // Contact goes straight to WhatsApp rather than to a page section
+  { label: "Contact", external: WHATSAPP_URL },
 ];
 
-function scrollTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+/** Height of the sticky nav (h-[68px]) — section tops must clear it, plus a little breathing room. */
+const NAV_OFFSET = 68 + 12;
+
+function scrollToId(id: string, behavior: ScrollBehavior = "smooth") {
+  const el = document.getElementById(id);
+  if (!el) return false;
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - NAV_OFFSET, behavior });
+  return true;
+}
+
+/**
+ * The wellness sections only exist on the home page, so an in-page scroll silently
+ * does nothing from /events/[id] or /terms. Off home, route to /#anchor instead and
+ * let useHashScroll take over once the home page mounts.
+ */
+function useSectionNav() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  return (id: string) => {
+    if (pathname === "/") scrollToId(id);
+    else router.push(`/#${id}`);
+  };
+}
+
+/**
+ * Next tries to honour a #hash exactly once, right after the navigation settles. The home
+ * page then keeps growing — the Firestore events grid renders and images decode — which
+ * moves the target out from under that one-shot scroll, so arriving at /#all-events lands
+ * short or back at the top. Re-anchor across a short window instead, and bail out the
+ * moment the visitor starts scrolling themselves.
+ */
+function useHashScroll() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.replace("#", ""));
+    if (!id) return;
+
+    let raf = 0;
+    let done = false;
+    const deadline = Date.now() + 1200;
+
+    // Any deliberate input means they're driving now — stop repositioning under them.
+    const release = () => { done = true; };
+    const opts = { passive: true, once: true } as const;
+    window.addEventListener("wheel", release, opts);
+    window.addEventListener("touchstart", release, opts);
+    window.addEventListener("keydown", release, { once: true });
+
+    const tick = () => {
+      if (done) return;
+      scrollToId(id, "auto");
+      if (Date.now() < deadline) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      done = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener("wheel", release);
+      window.removeEventListener("touchstart", release);
+      window.removeEventListener("keydown", release);
+    };
+  }, [pathname]);
 }
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const scrollTo = useSectionNav();
+  useHashScroll();
 
   return (
     <nav style={{ backgroundColor: "#FBF4E8", borderBottom: "1px solid #EEE2D5" }} className="sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-6 lg:px-10 flex items-center justify-between h-[68px]">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => scrollTo("about")}>
+        <Link href="/" aria-label="Aval Agam — home" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
           <Image src="/logo.png" alt="Aval Agam" width={48} height={48} style={{ objectFit: "contain" }} />
           <div>
             <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "17px", fontWeight: 700, lineHeight: 1.1 }}>AVAL AGAM</p>
             <p style={{ color: "#C9A25F", fontSize: "10px", letterSpacing: "0.15em", textTransform: "uppercase" }}>Her Inner World</p>
           </div>
-        </div>
+        </Link>
         <div className="hidden md:flex items-center gap-8">
-          {NAV.map((n) => (
-            <button key={n.label} onClick={() => scrollTo(n.anchor)} style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", fontSize: "14px", fontWeight: 400 }} className="hover:opacity-70 transition-opacity">
-              {n.label}
-            </button>
-          ))}
+          {NAV.map((n) =>
+            n.external ? (
+              <a key={n.label} href={n.external} target="_blank" rel="noopener noreferrer" style={{ color: "#2F3328", fontSize: "14px", fontWeight: 400, textDecoration: "none" }} className="hover:opacity-70 transition-opacity">
+                {n.label}
+              </a>
+            ) : (
+              <button key={n.label} type="button" onClick={() => scrollTo(n.anchor!)} style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", fontSize: "14px", fontWeight: 400 }} className="hover:opacity-70 transition-opacity">
+                {n.label}
+              </button>
+            )
+          )}
         </div>
         <div className="hidden md:flex items-center gap-3">
-          <button onClick={() => scrollTo("all-events")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "10px 22px", cursor: "pointer" }}>BROWSE EVENTS</button>
+          <button type="button" onClick={() => scrollTo("all-events")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "10px 22px", cursor: "pointer" }}>BROWSE EVENTS</button>
         </div>
-        <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", cursor: "pointer" }} className="md:hidden">
+        <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"} style={{ background: "none", border: "none", cursor: "pointer" }} className="md:hidden">
           {menuOpen ? <X size={22} color="#0F332B" /> : <Menu size={22} color="#0F332B" />}
         </button>
       </div>
       {menuOpen && (
         <div style={{ backgroundColor: "#FBF4E8", borderTop: "1px solid #EEE2D5" }} className="md:hidden px-6 py-4 flex flex-col gap-4">
-          {NAV.map((n) => (
-            <button key={n.label} onClick={() => { scrollTo(n.anchor); setMenuOpen(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", fontSize: "15px", textAlign: "left" }}>{n.label}</button>
-          ))}
+          {NAV.map((n) =>
+            n.external ? (
+              <a key={n.label} href={n.external} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} style={{ color: "#2F3328", fontSize: "15px", textDecoration: "none" }}>{n.label}</a>
+            ) : (
+              <button key={n.label} type="button" onClick={() => { setMenuOpen(false); scrollTo(n.anchor!); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", fontSize: "15px", textAlign: "left" }}>{n.label}</button>
+            )
+          )}
+          <Link href="/terms" onClick={() => setMenuOpen(false)} style={{ color: "#2F3328", fontSize: "15px", textDecoration: "none" }}>Terms &amp; Conditions</Link>
         </div>
       )}
     </nav>
@@ -71,21 +154,26 @@ export function Navbar() {
 }
 
 export function Footer() {
+  const scrollTo = useSectionNav();
+  const linkStyle: React.CSSProperties = { display: "block", background: "none", border: "none", cursor: "pointer", color: "rgba(251,244,232,0.6)", fontSize: "14px", textAlign: "left", marginBottom: "8px", textDecoration: "none", padding: 0 };
+
   return (
     <footer style={{ backgroundColor: "#0B2621" }}>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-12 grid grid-cols-1 md:grid-cols-3 gap-10">
         <div>
-          <div className="flex items-center gap-3 mb-4">
+          <Link href="/" aria-label="Aval Agam — home" className="flex items-center gap-3 mb-4" style={{ textDecoration: "none" }}>
             <Image src="/logo.png" alt="Aval Agam" width={34} height={34} style={{ objectFit: "contain", backgroundColor: "#FBF4E8", borderRadius: "50%", padding: "3px" }} />
             <p style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "18px", fontWeight: 700 }}>AVAL AGAM</p>
-          </div>
+          </Link>
           <p style={{ color: "rgba(251,244,232,0.6)", fontSize: "14px", lineHeight: 1.75 }}>A soulspace to know, grow &amp; thrive — wellness circles, workshops and mindful events in Coimbatore.</p>
         </div>
         <div>
           <p style={{ color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "16px" }}>Quick Links</p>
-          {[["Browse Events", "all-events"], ["About Us", "about"], ["Contact", "final-cta"]].map(([l, id]) => (
-            <button key={l} onClick={() => scrollTo(id)} style={{ display: "block", background: "none", border: "none", cursor: "pointer", color: "rgba(251,244,232,0.6)", fontSize: "14px", textAlign: "left", marginBottom: "8px" }}>{l}</button>
+          {[["Browse Events", "all-events"], ["About Us", "about"]].map(([l, id]) => (
+            <button key={l} type="button" onClick={() => scrollTo(id)} style={linkStyle}>{l}</button>
           ))}
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" style={linkStyle}>Contact</a>
+          <Link href="/terms" style={linkStyle}>Terms &amp; Conditions</Link>
         </div>
         <div>
           <p style={{ color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "16px" }}>Contact</p>

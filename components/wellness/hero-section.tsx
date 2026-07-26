@@ -2,7 +2,7 @@
 
 import { MapPin, Leaf, Sparkles } from "lucide-react";
 
-const HERO_IMAGE = "/Images/heromainimage.png";
+const HERO_IMAGE = "/Images/hero-circle.jpg";
 
 export function HeroSection() {
   const scrollTo = (id: string) => {
@@ -124,7 +124,7 @@ export function HeroSection() {
             }} />
             <img
               src={HERO_IMAGE}
-              alt="Serene woman meditating in warm light"
+              alt="Women journaling together in a warm, candle-lit Aval Agam circle"
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           </div>

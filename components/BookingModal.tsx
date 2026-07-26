@@ -48,6 +48,8 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   // Pre-select the first ticket that still has seats, not just the first one
   const firstAvailable = event.ticketTypes.find(t => t.sold < t.available) ?? event.ticketTypes[0];
   const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: firstAvailable?.id ?? "", quantity: 1, paymentMethod: "razorpay" });
+  // Both must be ticked before payment can be started
+  const [consent, setConsent] = useState({ terms: false, workshop: false });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [sending, setSending]   = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -67,11 +69,22 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   const maxQty = Math.min(10, remaining);
   const total = (selectedTicket?.price ?? 0) * form.quantity;
 
+  function clearError(key: string) {
+    setErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   function validate() {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Name is required";
     if (!form.email.trim() || !/^[^@]+@[^@]+\.[^@]+$/.test(form.email)) e.email = "Valid email required";
     if (!/^\d{10}$/.test(form.phone.replace(/[\s\-+]/g, "").replace(/^91/, "").replace(/^0/, ""))) e.phone = "Valid 10-digit phone required";
+    if (!consent.terms)    e.terms    = "Please accept the Terms & Conditions to continue";
+    if (!consent.workshop) e.workshop = "Please confirm you understand the session format and fee policy";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -222,7 +235,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
       router.push("/");
     } else {
       onOpenChange(false);
-      setTimeout(() => { setStep("form"); setErrors({}); }, 300);
+      setTimeout(() => { setStep("form"); setErrors({}); setConsent({ terms: false, workshop: false }); }, 300);
     }
   }
 
@@ -335,7 +348,32 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                   <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px" }}>Total Amount</span>
                   <span style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>{total === 0 ? "Free" : `₹${total.toLocaleString()}`}</span>
                 </div>
-                <button onClick={handlePay} disabled={sending} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "16px", cursor: sending ? "not-allowed" : "pointer", textTransform: "uppercase", opacity: sending ? 0.7 : 1 }}>
+
+                {/* Mandatory consent — both boxes must be ticked before payment */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <Consent
+                    checked={consent.terms}
+                    error={errors.terms}
+                    onChange={(v) => { setConsent((c) => ({ ...c, terms: v })); clearError("terms"); }}
+                  >
+                    I have read and agree to the Aval Agam&rsquo;s{" "}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", fontWeight: 600, textDecoration: "underline" }}>
+                      Terms &amp; Conditions
+                    </a>
+                    .
+                  </Consent>
+                  <Consent
+                    checked={consent.workshop}
+                    error={errors.workshop}
+                    onChange={(v) => { setConsent((c) => ({ ...c, workshop: v })); clearError("workshop"); }}
+                  >
+                    I understand that this is a live, non-clinical emotional wellness workshop, the fee is
+                    non-refundable and non-transferable, no recording or replay will be provided, and no
+                    recordings of the session are allowed by the participants.
+                  </Consent>
+                </div>
+
+                <button onClick={handlePay} disabled={sending || !consent.terms || !consent.workshop} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "16px", cursor: sending || !consent.terms || !consent.workshop ? "not-allowed" : "pointer", textTransform: "uppercase", opacity: sending || !consent.terms || !consent.workshop ? 0.55 : 1, transition: "opacity 0.15s" }}>
                   {sending ? "PLEASE WAIT…" : total === 0 ? "CONFIRM RESERVATION" : `PAY ₹${total.toLocaleString()}`}
                 </button>
               </div>
@@ -356,6 +394,23 @@ function Field({ label, icon, error, children }: { label: string; icon?: React.R
       </label>
       {children}
       {error && <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "11px" }}>{error}</span>}
+    </div>
+  );
+}
+
+function Consent({ checked, error, onChange, children }: { checked: boolean; error?: string; onChange: (v: boolean) => void; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", backgroundColor: "#ffffff", border: `1.5px solid ${error ? "#C8734F" : checked ? "#0F332B" : "#EEE2D5"}`, borderRadius: "10px", padding: "12px 14px", transition: "border-color 0.15s" }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          style={{ accentColor: "#0F332B", width: "16px", height: "16px", marginTop: "2px", flexShrink: 0, cursor: "pointer" }}
+        />
+        <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12.5px", lineHeight: 1.6 }}>{children}</span>
+      </label>
+      {error && <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "11px", display: "block", marginTop: "5px" }}>{error}</span>}
     </div>
   );
 }
