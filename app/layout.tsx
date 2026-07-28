@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avalagam.com"),
+  metadataBase: new URL("https://www.avalagam.com"),
   title: "Aval Agam — Her Inner World",
   description: "A soulspace to know, grow & thrive. Wellness circles, workshops and literary events in Coimbatore.",
   icons: { icon: "/logo.png" },

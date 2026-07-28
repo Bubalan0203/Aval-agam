@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function proxy(request: NextRequest) {
-  const response = NextResponse.next();
+  const host = request.headers.get("host") ?? "";
 
-  if (request.nextUrl.hostname.endsWith(".vercel.app")) {
-    response.headers.set("X-Robots-Tag", "noindex");
+  if (host.endsWith(".vercel.app")) {
+    const redirectUrl = new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      "https://www.avalagam.com"
+    );
+    return NextResponse.redirect(redirectUrl, 308);
   }
 
-  return response;
+  return NextResponse.next();
 }

@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: "/admin",
     },
-    sitemap: "https://avalagam.com/sitemap.xml",
+    sitemap: "https://www.avalagam.com/sitemap.xml",
   };
 }
