@@ -2,12 +2,17 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://avalagam.com"),
   title: "Aval Agam — Her Inner World",
   description: "A soulspace to know, grow & thrive. Wellness circles, workshops and literary events in Coimbatore.",
   icons: { icon: "/logo.png" },
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     title: "Aval Agam — Her Inner World",
     description: "A soulspace to know, grow & thrive. Wellness circles, workshops and literary events in Coimbatore.",
+    url: "/",
     images: ["/logo.png"],
   },
 };
