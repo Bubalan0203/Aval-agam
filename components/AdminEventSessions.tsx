@@ -1,5 +1,5 @@
 "use client";
-import { auth } from "@/lib/firebase";
+import { sendCancellationEmails } from "@/lib/cancellation-email";
 import { useState } from "react";
 import { cancelEventSession, getEvent, type Event } from "@/lib/firestore";
 import { legacySessions, sessionAvailable, type EventSession } from "@/lib/event-sessions";
@@ -15,7 +15,7 @@ export function AdminEventSessions({ event, onUpdate }: { event: Event; onUpdate
   async function cancel() {
     if (!pending || busy) return;
     setBusy(true);
-    try { await cancelEventSession(event.id, pending.id, reason); const updated = await getEvent(event.id); if (updated) onUpdate(updated); setPending(null); setConfirm(false); }
+    try { await cancelEventSession(event.id, pending.id, reason); const updated = await getEvent(event.id); if (updated) onUpdate(updated); setPending(null); setConfirm(false); const result = await sendCancellationEmails(event.id); setNotice(`Date cancelled. ${result.sent} emails sent; ${result.failed} failed. Use retry for any unsent notices.`); }
     catch (e) { setError((e as Error).message); setConfirm(false); }
     finally { setBusy(false); }
   }
@@ -26,15 +26,15 @@ export function AdminEventSessions({ event, onUpdate }: { event: Event; onUpdate
       {sessionAvailable(s) && <button type="button" onClick={() => { setPending(s); setReason(""); setError(""); }} style={{ color: "#C8734F" }}>Cancel this date</button>}
     </div>)}
     {pending && <div style={{ paddingTop: 16 }}><label>Cancellation reason<textarea value={reason} onChange={e => setReason(e.target.value)} style={{ display: "block", width: "100%", border: "1px solid #C9A25F", padding: 12 }} /></label><button type="button" disabled={!reason.trim() || busy} onClick={() => setConfirm(true)}>Review cancellation</button><button type="button" disabled={busy} onClick={() => setPending(null)} style={{ marginLeft: 20 }}>Keep date</button></div>}
-    <button type="button" disabled={busy} onClick={() => setSendConfirm(true)} style={{ marginTop: 20 }}>Process pending notifications</button>
+    <button type="button" disabled={busy} onClick={() => setSendConfirm(true)} style={{ marginTop: 20 }}>Retry cancellation emails</button>
     {notice && <p role="status">{notice}</p>}
-    <ConfirmModal open={sendConfirm} title="Send pending notifications?" message="Process queued booking confirmations and cancellation notices. Failed deliveries stay queued for retry. This may process notices for other events too." confirmLabel="Process notifications" busy={busy} onCancel={() => setSendConfirm(false)} onConfirm={async () => {
+    <ConfirmModal open={sendConfirm} title="Send cancellation emails?" message="Send unsent cancellation notices for this event using EmailJS. Keep this page open until delivery finishes." confirmLabel="Send notices" busy={busy} onCancel={() => setSendConfirm(false)} onConfirm={async () => {
       if (busy) return; setBusy(true);
-      try { const token = await auth.currentUser?.getIdToken(); const response = await fetch("/api/admin/event-jobs", { method: "POST", headers: { Authorization: `Bearer ${token}` } }); const result = await response.json(); if (!response.ok) throw new Error(result.error); setNotice(`${result.completed} of ${result.checked} jobs completed. Run again to send newly queued messages; incomplete jobs need configuration or retry.`); }
+      try { const result = await sendCancellationEmails(event.id); setNotice(`${result.sent} cancellation emails sent; ${result.failed} failed.`); }
       catch (e) { setError((e as Error).message); }
       finally { setBusy(false); setSendConfirm(false); }
     }} />
     {error && <p role="alert">{error}</p>}
-    <ConfirmModal open={confirm} title="Permanently cancel this date?" message={`${pending?.date} ${pending?.startTime} will be marked Cancelled and cannot be reopened or deleted. Bookings remain in history. Cancellation notifications will be queued; refunds require payment reconciliation.`} confirmLabel="Cancel date permanently" busy={busy} onConfirm={() => void cancel()} onCancel={() => setConfirm(false)} />
+    <ConfirmModal open={confirm} title="Permanently cancel this date?" message={`${pending?.date} ${pending?.startTime} will be marked Cancelled and cannot be reopened or deleted. Bookings remain in history. Cancellation emails will be sent using EmailJS. Paid bookings will show Refund needed; no refund is issued automatically.`} confirmLabel="Cancel date permanently" busy={busy} onConfirm={() => void cancel()} onCancel={() => setConfirm(false)} />
   </section>;
 }

@@ -1,10 +1,10 @@
-import { legacySessions, sessionAvailable, type EventSession } from "./event-sessions";
+import { legacySessions, validateSessions, sessionAvailable, type EventSession } from "./event-sessions";
 import {
   collection, doc, getDocs, getDoc,
-  query, orderBy, where, Timestamp,
+  query, orderBy, where, Timestamp, runTransaction, serverTimestamp, addDoc,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import { eventMediaDefaults, type DescriptionFormat, type YouTubeUrls } from "./event-content";
+import { eventMediaDefaults, sanitizeDescription, type DescriptionFormat, type YouTubeUrls } from "./event-content";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,28 +77,86 @@ export async function getEvent(id: string): Promise<Event | null> {
   return withSessions({ ...snap.data(), ...eventMediaDefaults(snap.data()), id: snap.id } as Event);
 }
 
-async function adminAction(body: unknown): Promise<{id: string}> {
-  const token = await auth.currentUser?.getIdToken();
-  if (!token) throw new Error("Administrator sign-in required.");
-  const response = await fetch("/api/admin/events", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? "Could not update event.");
-  return result;
+function signedIn() {
+  if (!auth.currentUser) throw new Error("Administrator sign-in required.");
+}
+function eventPayload(data: Omit<Event, "id" | "createdAt">, previous: EventSession[] = []) {
+  validateSessions(data.sessions ?? [], previous);
+  if (!data.ticketTypes.length || data.ticketTypes.some(t => !t.name.trim() || !Number.isInteger(t.available) || t.available < 1 || !Number.isFinite(t.price) || t.price < 0)) throw new Error("Enter valid ticket names, quantities and prices.");
+  for (const session of previous) for (const [id, sold] of Object.entries(session.sold)) {
+    const ticket = data.ticketTypes.find(t => t.id === id);
+    if (sold > 0 && (!ticket || ticket.available < sold)) throw new Error("Cannot remove a booked ticket or reduce capacity below seats sold.");
+  }
+  const sessions = data.sessions!.map(s => {
+    const old = previous.find(p => p.id === s.id);
+    return old?.status === "cancelled" ? old : { ...s, sold: old?.sold ?? {} };
+  });
+  return { ...data, ...eventMediaDefaults(data),
+    description: data.descriptionFormat === "html" ? sanitizeDescription(data.description) : data.description,
+    sessions, schemaVersion: 2,
+    ticketTypes: data.ticketTypes.map(t => ({ ...t, sold: previous.reduce((n,s) => n + (s.sold[t.id] ?? 0),0) })),
+  };
 }
 export async function createEvent(data: Omit<Event, "id" | "createdAt">): Promise<string> {
-  return (await adminAction({ action: "create", data })).id;
+  signedIn();
+  return (await addDoc(collection(db, "events"), { ...eventPayload(data), createdAt: serverTimestamp() })).id;
 }
 export async function updateEvent(id: string, data: Omit<Event, "id" | "createdAt">): Promise<void> {
-  await adminAction({ action: "update", id, data });
+  signedIn();
+  await runTransaction(db, async tx => {
+    const ref = doc(db, "events", id); const current = await tx.get(ref);
+    if (!current.exists()) throw new Error("Event not found.");
+    tx.update(ref, eventPayload(data, legacySessions(current.data() as Event)));
+  });
 }
 export async function deleteEvent(id: string): Promise<void> {
-  await adminAction({ action: "delete", id });
+  signedIn();
+  const bookings = await getEventBookings(id);
+  if (bookings.length) throw new Error("Events with bookings cannot be deleted. Cancel dates to preserve booking history.");
+  await runTransaction(db, async tx => {
+    const ref = doc(db, "events", id); const current = await tx.get(ref);
+    if (!current.exists()) return;
+    if (legacySessions(current.data() as Event).some(s => s.status === "cancelled" || Object.values(s.sold).some(n => n > 0))) throw new Error("Events with bookings or cancelled history cannot be deleted.");
+    tx.delete(ref);
+  });
 }
 export async function cancelEventSession(eventId: string, sessionId: string, reason: string): Promise<void> {
-  await adminAction({ action: "cancel", id: eventId, sessionId, reason });
+  signedIn();
+  if (!reason.trim()) throw new Error("Enter a cancellation reason.");
+  await runTransaction(db, async tx => {
+    const ref = doc(db, "events", eventId); const current = await tx.get(ref);
+    if (!current.exists()) throw new Error("Event not found.");
+    const sessions = legacySessions(current.data() as Event);
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) throw new Error("Date not found.");
+    if (session.status === "cancelled") return;
+    if (!sessionAvailable(session)) throw new Error("Started dates cannot be cancelled.");
+    tx.update(ref, { schemaVersion: 2, sessions: sessions.map(s => s.id === sessionId ? { ...s, status: "cancelled", cancelledAt: new Date().toISOString(), cancellationReason: reason.trim() } : s) });
+  });
 }
 
-// ── Bookings ─────────────────────────────────────────────────────────────────
+/** Original payment-first flow; seats and booking are saved atomically after verification. */
+export async function createBooking(data: Omit<Booking, "id" | "bookedAt"> & { ticketTypeId: string }): Promise<string> {
+  const ref = doc(collection(db, "bookings"));
+  await runTransaction(db, async tx => {
+    const eventRef = doc(db, "events", data.eventId); const current = await tx.get(eventRef);
+    if (!current.exists()) throw new Error("EVENT_NOT_FOUND");
+    const event = current.data() as Event;
+    const sessions = legacySessions(event);
+    const session = sessions.find(s => s.id === (data.sessionId ?? "legacy"));
+    if (!session || !sessionAvailable(session)) throw new Error("This date is no longer available.");
+    const ticket = event.ticketTypes.find(t => t.id === data.ticketTypeId);
+    if (!ticket) throw new Error("TICKET_NOT_FOUND");
+    if (!Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > 10) throw new Error("Invalid quantity.");
+    if ((session.sold[ticket.id] ?? 0) + data.quantity > ticket.available) throw new Error("SOLD_OUT");
+    tx.update(eventRef, { schemaVersion: 2,
+      sessions: sessions.map(s => s.id === session.id ? { ...s, sold: { ...s.sold, [ticket.id]: (s.sold[ticket.id] ?? 0) + data.quantity } } : s),
+      ticketTypes: event.ticketTypes.map(t => t.id === ticket.id ? { ...t, sold: t.sold + data.quantity } : t),
+    });
+    tx.set(ref, { ...data, sessionId: session.id, sessionDate: session.date, sessionStartTime: session.startTime, sessionEndTime: session.endTime, status: "confirmed", bookedAt: serverTimestamp() });
+  });
+  return ref.id;
+}
 
 export async function getBookings(): Promise<Booking[]> {
   const q = query(collection(db, "bookings"), orderBy("bookedAt", "desc"));
