@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function admin() { return request.auth != null && request.auth.token.admin == true; }
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if false; // All mutations use authenticated server endpoints.
+    }
+    match /bookings/{bookingId} {
+      allow read: if admin();
+      allow write: if false;
+    }
+    match /eventJobs/{jobId} {
+      allow read: if admin();
+      allow write: if false;
+    }
+  }
+}

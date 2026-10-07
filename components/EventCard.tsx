@@ -1,4 +1,5 @@
 "use client";
+import { legacySessions, sessionAvailable } from "@/lib/event-sessions";
 import { EventDescriptionPreview } from "./EventDescriptionPreview";
 import { Calendar, Clock, MapPin, Tag } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,7 +17,8 @@ function minPrice(e: Event) {
 
 export function EventCard({ event }: { event: Event }) {
   const router = useRouter();
-  const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
+  const dates = legacySessions(event).filter(s => sessionAvailable(s));
+  const isSoldOut = !dates.some(s => event.ticketTypes.some(t => (s.sold[t.id] ?? 0) < t.available));
 
   return (
     <div
@@ -44,7 +46,7 @@ export function EventCard({ event }: { event: Event }) {
         <EventDescriptionPreview value={event.description} format={event.descriptionFormat} />
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "7px", fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.75 }}>
-            <Calendar size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{formatDate(event.date)}
+            <Calendar size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{formatDate(event.date)}{dates.length > 1 ? ` · ${dates.length} dates` : ""}
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "7px", fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.75 }}>
             <Clock size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{event.startTime} — {event.endTime}

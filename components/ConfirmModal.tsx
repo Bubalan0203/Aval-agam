@@ -1,33 +1,26 @@
 "use client";
-import { AlertTriangle } from "lucide-react";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { useState } from "react";
 
 type Props = {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  busy?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
+  open: boolean; title: string; message: string; confirmLabel?: string;
+  busy?: boolean; busyLabel?: string; requiredText?: string;
+  onConfirm: () => void; onCancel: () => void;
 };
-
-export function ConfirmModal({ open, title, message, confirmLabel = "Delete", busy = false, onConfirm, onCancel }: Props) {
-  if (!open) return null;
-  return (
-    <div onClick={onCancel} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,51,43,0.45)", backdropFilter: "blur(4px)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor: "#FBF4E8", borderRadius: "20px", padding: "32px", width: "100%", maxWidth: "400px", textAlign: "center", boxShadow: "0 20px 60px rgba(15,51,43,0.25)" }}>
-        <div style={{ width: "56px", height: "56px", borderRadius: "50%", backgroundColor: "rgba(200,115,79,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-          <AlertTriangle size={26} style={{ color: "#C8734F" }} />
+export function ConfirmModal({ open, title, message, confirmLabel = "Delete", busy = false, busyLabel = "Working…", requiredText, onConfirm, onCancel }: Props) {
+  const [typed, setTyped] = useState("");
+  return <AlertDialog.Root open={open} onOpenChange={value => { if (!value && !busy) { setTyped(""); onCancel(); } }}>
+    <AlertDialog.Portal>
+      <AlertDialog.Overlay style={{ position: "fixed", inset: 0, background: "rgba(15,51,43,.5)", backdropFilter: "blur(4px)", zIndex: 120 }} />
+      <AlertDialog.Content onEscapeKeyDown={e => { if (busy) e.preventDefault(); }} style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 121, width: "min(440px,calc(100vw - 32px))", background: "#FBF4E8", padding: 28, borderRadius: 20, color: "#0F332B" }}>
+        <AlertDialog.Title style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{title}</AlertDialog.Title>
+        <AlertDialog.Description style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>{message}</AlertDialog.Description>
+        {requiredText && <label style={{ display: "block", marginBottom: 20 }}>Type “{requiredText}” to confirm<input autoComplete="off" value={typed} onChange={e => setTyped(e.target.value)} disabled={busy} style={{ display: "block", width: "100%", padding: 10, border: "1px solid #C9A25F", borderRadius: 8, marginTop: 8 }} /></label>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+          <AlertDialog.Cancel disabled={busy} style={{ padding: "10px 20px", borderRadius: 24, border: "1px solid #C9A25F" }}>Go back</AlertDialog.Cancel>
+          <button type="button" disabled={busy || !!requiredText && typed !== requiredText} onClick={onConfirm} style={{ padding: "10px 20px", borderRadius: 24, background: "#0F332B", color: "white", opacity: busy || !!requiredText && typed !== requiredText ? .5 : 1 }}>{busy ? busyLabel : confirmLabel}</button>
         </div>
-        <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "8px" }}>{title}</h2>
-        <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", lineHeight: 1.6, opacity: 0.75, marginBottom: "24px" }}>{message}</p>
-        <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-          <button onClick={onCancel} disabled={busy} style={{ backgroundColor: "transparent", color: "#2F3328", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "1.5px solid #EEE2D5", borderRadius: "9999px", padding: "12px 26px", cursor: "pointer" }}>Cancel</button>
-          <button onClick={onConfirm} disabled={busy} style={{ backgroundColor: "#C8734F", color: "#fff", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.05em", border: "none", borderRadius: "9999px", padding: "12px 26px", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-            {busy ? "Deleting…" : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+      </AlertDialog.Content>
+    </AlertDialog.Portal>
+  </AlertDialog.Root>;
 }

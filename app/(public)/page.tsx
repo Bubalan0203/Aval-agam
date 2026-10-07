@@ -1,4 +1,5 @@
 "use client";
+import { legacySessions, sessionAvailable } from "@/lib/event-sessions";
 import { useState, useEffect } from "react";
 import { BookOpen } from "lucide-react";
 import { getEvents } from "@/lib/firestore";
@@ -30,9 +31,9 @@ export default function HomePage() {
   useEffect(() => { getEvents().then(setEvents); }, []);
 
   // Only upcoming events, soonest first
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+
   const filtered = events
-    .filter((e) => new Date(e.date) >= today)
+    .filter((e) => legacySessions(e).some(s => sessionAvailable(s)))
     .filter((e) => category === "All" || e.category === category)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 

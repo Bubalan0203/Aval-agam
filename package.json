@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:event-sessions": "node --import tsx --test tests/event-sessions.test.ts",
+    "migrate:event-sessions": "node --import tsx scripts/migrate-event-sessions.ts",
     "test:event-content": "node --import tsx --test tests/event-content.test.ts"
   },
   "dependencies": {
@@ -50,6 +52,7 @@
     "date-fns": "^4.4.0",
     "embla-carousel-react": "^8.6.0",
     "firebase": "^12.15.0",
+    "firebase-admin": "^13.10.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.23.0",
     "motion": "^12.42.2",

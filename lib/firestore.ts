@@ -1,9 +1,10 @@
+import { legacySessions, sessionAvailable, type EventSession } from "./event-sessions";
 import {
-  collection, doc, getDocs, getDoc, addDoc, deleteDoc, updateDoc,
-  query, orderBy, where, serverTimestamp, Timestamp, runTransaction,
+  collection, doc, getDocs, getDoc,
+  query, orderBy, where, Timestamp,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import { eventMediaDefaults, legacyEventMediaPatch, sanitizeDescription, type DescriptionFormat, type YouTubeUrls } from "./event-content";
+import { eventMediaDefaults, type DescriptionFormat, type YouTubeUrls } from "./event-content";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,9 @@ export type TicketType = {
 
 export type Event = {
   id:          string;
+  sessions?: EventSession[];
+  selectedSessionId?: string;
+  schemaVersion?: number;
   title:       string;
   description: string;
   descriptionFormat?: DescriptionFormat;
@@ -36,6 +40,11 @@ export type Event = {
 export type Booking = {
   id?:         string;
   eventId:     string;
+  sessionId?: string;
+  sessionDate?: string;
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  status?: "pending" | "confirmed" | "cancelled" | "refund_required" | "refunded";
   eventTitle:  string;
   name:        string;
   email:       string;
@@ -48,98 +57,53 @@ export type Booking = {
   bookedAt?:   Timestamp;
 };
 
-// ── Events ───────────────────────────────────────────────────────────────────
-
-/** Backfill legacy documents after admin login; safe to retry and concurrent edits are preserved. */
-export async function backfillEventMedia(): Promise<void> {
-  if (!auth.currentUser) throw new Error("AUTH_REQUIRED");
-  const snap = await getDocs(collection(db, "events"));
-  for (let offset = 0; offset < snap.docs.length; offset += 20) {
-    await Promise.all(snap.docs.slice(offset, offset + 20).map(async (eventDoc) => {
-      if (!Object.keys(legacyEventMediaPatch(eventDoc.data())).length) return;
-      await runTransaction(db, async (tx) => {
-        const current = await tx.get(eventDoc.ref);
-        if (!current.exists()) return;
-        const patch = legacyEventMediaPatch(current.data());
-        if (Object.keys(patch).length) tx.update(eventDoc.ref, patch);
-      });
-    }));
-  }
+export function withSessions(event: Event): Event {
+  const sessions = legacySessions(event);
+  const next = sessions.filter(s => sessionAvailable(s)).sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))[0];
+  return { ...event, sessions, ...(next ? { date: next.date, startTime: next.startTime, endTime: next.endTime } : {}) };
 }
+
+// ── Events ───────────────────────────────────────────────────────────────────
 
 export async function getEvents(): Promise<Event[]> {
   const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ ...d.data(), ...eventMediaDefaults(d.data()), id: d.id } as Event));
+  return snap.docs.map(d => withSessions({ ...d.data(), ...eventMediaDefaults(d.data()), id: d.id } as Event));
 }
 
 export async function getEvent(id: string): Promise<Event | null> {
   const snap = await getDoc(doc(db, "events", id));
   if (!snap.exists()) return null;
-  return { ...snap.data(), ...eventMediaDefaults(snap.data()), id: snap.id } as Event;
+  return withSessions({ ...snap.data(), ...eventMediaDefaults(snap.data()), id: snap.id } as Event);
 }
 
+async function adminAction(body: unknown): Promise<{id: string}> {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Administrator sign-in required.");
+  const response = await fetch("/api/admin/events", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "Could not update event.");
+  return result;
+}
 export async function createEvent(data: Omit<Event, "id" | "createdAt">): Promise<string> {
-  const ref = await addDoc(collection(db, "events"), {
-    ...data,
-    ...eventMediaDefaults(data),
-    description: data.descriptionFormat === "html" ? sanitizeDescription(data.description) : data.description,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+  return (await adminAction({ action: "create", data })).id;
 }
-
-export async function deleteEvent(id: string): Promise<void> {
-  // Delete the event's bookings first so stats stay accurate
-  const snap = await getDocs(query(collection(db, "bookings"), where("eventId", "==", id)));
-  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-  await deleteDoc(doc(db, "events", id));
-}
-
 export async function updateEvent(id: string, data: Omit<Event, "id" | "createdAt">): Promise<void> {
-  await updateDoc(doc(db, "events", id), {
-    ...data,
-    ...eventMediaDefaults(data),
-    description: data.descriptionFormat === "html" ? sanitizeDescription(data.description) : data.description,
-  });
+  await adminAction({ action: "update", id, data });
+}
+export async function deleteEvent(id: string): Promise<void> {
+  await adminAction({ action: "delete", id });
+}
+export async function cancelEventSession(eventId: string, sessionId: string, reason: string): Promise<void> {
+  await adminAction({ action: "cancel", id: eventId, sessionId, reason });
 }
 
 // ── Bookings ─────────────────────────────────────────────────────────────────
 
-/**
- * Creates a booking atomically: re-reads the event inside a transaction,
- * verifies enough seats remain, increments `sold`, and saves the booking.
- * Throws Error("SOLD_OUT") if not enough seats are left.
- */
-export async function createBooking(data: Omit<Booking, "id" | "bookedAt"> & { ticketTypeId: string }): Promise<string> {
-  const bookingRef = doc(collection(db, "bookings"));
-  const eventRef   = doc(db, "events", data.eventId);
-
-  await runTransaction(db, async (tx) => {
-    const eventSnap = await tx.get(eventRef);
-    if (!eventSnap.exists()) throw new Error("EVENT_NOT_FOUND");
-
-    const eventData = eventSnap.data() as Event;
-    const ticket = eventData.ticketTypes.find(
-      t => t.id === data.ticketTypeId || t.name === data.ticketType
-    );
-    if (!ticket) throw new Error("TICKET_NOT_FOUND");
-    if (ticket.sold + data.quantity > ticket.available) throw new Error("SOLD_OUT");
-
-    const updatedTickets = eventData.ticketTypes.map(t =>
-      t === ticket ? { ...t, sold: t.sold + data.quantity } : t
-    );
-    tx.update(eventRef, { ticketTypes: updatedTickets });
-    tx.set(bookingRef, { ...data, bookedAt: serverTimestamp() });
-  });
-
-  return bookingRef.id;
-}
-
 export async function getBookings(): Promise<Booking[]> {
   const q = query(collection(db, "bookings"), orderBy("bookedAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => b.status !== "pending");
 }
 
 export async function getEventBookings(eventId: string): Promise<Booking[]> {
@@ -147,5 +111,6 @@ export async function getEventBookings(eventId: string): Promise<Booking[]> {
   const snap = await getDocs(q);
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() } as Booking))
+    .filter(b => b.status !== "pending")
     .sort((a, b) => (b.bookedAt?.toMillis() ?? 0) - (a.bookedAt?.toMillis() ?? 0));
 }

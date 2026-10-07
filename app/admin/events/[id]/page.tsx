@@ -6,6 +6,8 @@ import { EventDescription } from "@/components/EventDescription";
 import { EventVideos } from "@/components/EventVideos";
 import { getEvent, getEventBookings, deleteEvent } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
+import { BookingStatusChip, bookingStatus } from "@/components/BookingStatusChip";
+import { AdminEventSessions } from "@/components/AdminEventSessions";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 function formatDate(d: string) {
@@ -19,6 +21,7 @@ export default function AdminEventDetailPage() {
   const [event, setEvent]       = useState<Event | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -32,8 +35,9 @@ export default function AdminEventDetailPage() {
 
   async function handleDelete() {
     setDeleting(true);
-    await deleteEvent(id);
-    router.push("/admin/dashboard");
+    try { await deleteEvent(id); router.push("/admin/dashboard"); }
+    catch (error) { setDeleteError((error as Error).message); }
+    finally { setDeleting(false); setConfirmOpen(false); }
   }
 
   if (loading) return (
@@ -49,11 +53,12 @@ export default function AdminEventDetailPage() {
     </div>
   );
 
-  const totalRevenue = bookings.reduce((s, b) => s + b.amount, 0);
+  const totalRevenue = bookings.filter(b => bookingStatus(b, event) === "confirmed").reduce((s, b) => s + b.amount, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
+      {deleteError && <p role="alert">{deleteError}</p>}
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
@@ -71,6 +76,8 @@ export default function AdminEventDetailPage() {
           </button>
         </div>
       </div>
+
+      <AdminEventSessions event={event} onUpdate={setEvent} />
 
       {/* Event info + hero */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }} className="grid grid-cols-1 md:grid-cols-2">
@@ -118,7 +125,7 @@ export default function AdminEventDetailPage() {
                   <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#0F332B" }}>{t.name}</span>
                 </div>
                 <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                  <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#2F3328", opacity: 0.6 }}>{t.sold}/{t.available} sold</span>
+                  <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#2F3328", opacity: 0.6 }}>{t.available} seats per date · {t.sold} booked across dates</span>
                   <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, color: "#C8734F" }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
                 </div>
               </div>
@@ -169,8 +176,9 @@ export default function AdminEventDetailPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <User size={12} style={{ color: "#C9A25F" }} />
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600 }}>{b.name}</span>
+                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600 }}>{b.name}<small style={{ display: "block" }}>{b.sessionDate ?? event.date} · {b.sessionStartTime ?? event.startTime}</small></span>
                   </div>
+                  <BookingStatusChip booking={b} event={event} />
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <Mail size={11} style={{ color: "#2F3328", opacity: 0.4 }} />
                     <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", opacity: 0.6 }}>{b.email}</span>
@@ -192,7 +200,8 @@ export default function AdminEventDetailPage() {
       <ConfirmModal
         open={confirmOpen}
         title="Delete this event?"
-        message="The event and all of its bookings will be permanently removed. This cannot be undone."
+        message="Permanently delete this event? This cannot be undone. Events with bookings or cancelled dates are protected from deletion."
+        requiredText={event.title}
         busy={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmOpen(false)}

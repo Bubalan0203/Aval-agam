@@ -7,7 +7,10 @@ import type { TicketType } from "@/lib/firestore";
 import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
 import { EventVideoFields } from "@/components/EventVideoFields";
 import { descriptionHtml, descriptionText, normalizeYouTubeUrls, safeExternalUrl, youtubeVideoId } from "@/lib/event-content";
-import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { EventSessionFields, newSession } from "@/components/EventSessionFields";
+import { legacySessions, validateSessions, type EventSession } from "@/lib/event-sessions";
+import { EVENT_CATEGORY_OPTIONS } from "@/lib/event-options";
 
 type TicketDraft = { id: string; name: string; available: string; price: string; sold: number };
 
@@ -22,33 +25,16 @@ function Label({ children }: { children: React.ReactNode }) {
   return <label style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", fontWeight: 600, letterSpacing: "0.04em", display: "block", marginBottom: "6px" }}>{children}</label>;
 }
 
-function parseTime(t: string) {
-  if (!t) return "";
-  const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!match) return "";
-  let h = parseInt(match[1]);
-  const m = match[2];
-  const ampm = match[3].toUpperCase();
-  if (ampm === "PM" && h !== 12) h += 12;
-  if (ampm === "AM" && h === 12) h = 0;
-  return `${String(h).padStart(2, "0")}:${m}`;
-}
-
-function formatTime(t: string) {
-  if (!t) return "";
-  if (t.includes("AM") || t.includes("PM")) return t;
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
 export default function AdminEventEditPage() {
   const { id } = useParams<{ id: string }>();
   const router  = useRouter();
 
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
-  const [form, setForm]         = useState({ title: "", description: "", date: "", startTime: "", endTime: "", location: "", locationUrl: "", category: "" });
+  const [sessions, setSessions] = useState<EventSession[]>([newSession()]);
+  const [originalSessions, setOriginalSessions] = useState<EventSession[]>([]);
+  const [confirmSave, setConfirmSave] = useState(false);
+  const [form, setForm]         = useState({ title: "", description: "", location: "", locationUrl: "", category: "" });
   const [tickets, setTickets]   = useState<TicketDraft[]>([]);
   const [heroBanner, setHeroBanner]   = useState<string | null>(null);
   const [youtubeLinks, setYoutubeLinks] = useState<[string, string]>(["", ""]);
@@ -66,13 +52,12 @@ export default function AdminEventEditPage() {
       setForm({
         title:       evt.title,
         description: descriptionHtml(evt.description, evt.descriptionFormat),
-        date:        evt.date,
-        startTime:   parseTime(evt.startTime),
-        endTime:     parseTime(evt.endTime),
         location:    evt.location,
         locationUrl: evt.locationUrl,
         category:    evt.category,
       });
+      setSessions(legacySessions(evt));
+      setOriginalSessions(legacySessions(evt));
       setHeroBanner(evt.image);
       setGalleryImgs(evt.gallery);
       setYoutubeLinks([evt.youtubeUrls?.[0] ?? "", evt.youtubeUrls?.[1] ?? ""]);
@@ -131,8 +116,10 @@ export default function AdminEventEditPage() {
 
   function removeGallery(i: number) { setGalleryImgs(p => p.filter((_, idx) => idx !== i)); }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave(e?: React.FormEvent, confirmed = false) {
+    e?.preventDefault();
+    if (saving) return;
+    try { validateSessions(sessions, originalSessions); } catch (error) { setToast({ type: "error", msg: (error as Error).message }); return; }
     if (!descriptionText(form.description, "html").trim()) {
       setToast({ type: "error", msg: "Enter an event description." });
       return;
@@ -153,10 +140,7 @@ export default function AdminEventEditPage() {
       setToast({ type: "error", msg: "Add at least one ticket type with a name and quantity." });
       return;
     }
-    if (form.startTime && form.endTime && form.endTime <= form.startTime) {
-      setToast({ type: "error", msg: "End time must be after start time." });
-      return;
-    }
+    if (!confirmed) { setConfirmSave(true); return; }
     setSaving(true);
     try {
       await updateEvent(id, {
@@ -165,9 +149,10 @@ export default function AdminEventEditPage() {
         descriptionFormat: "html",
         youtubeUrls: normalizeYouTubeUrls(youtubeLinks),
         category:    form.category,
-        date:        form.date,
-        startTime:   formatTime(form.startTime),
-        endTime:     formatTime(form.endTime),
+        date:        sessions[0].date,
+        startTime:   sessions[0].startTime,
+        endTime:     sessions[0].endTime,
+        sessions,
         location:    form.location,
         locationUrl: safeExternalUrl(form.locationUrl) ?? "",
         image:       heroBanner ?? "",
@@ -176,9 +161,9 @@ export default function AdminEventEditPage() {
       });
       setToast({ type: "success", msg: "Event updated successfully!" });
       setTimeout(() => router.push(`/admin/events/${id}`), 1200);
-    } catch {
-      setToast({ type: "error", msg: "Failed to save. Please try again." });
-    } finally { setSaving(false); }
+    } catch (error) {
+      setToast({ type: "error", msg: (error as Error).message });
+    } finally { setSaving(false); setConfirmSave(false); }
   }
 
   if (loading) return (
@@ -225,27 +210,7 @@ export default function AdminEventEditPage() {
 
         <EventVideoFields values={youtubeLinks} onChange={setYoutubeLinks} />
 
-        {/* Date & Time */}
-        <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
-          <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "16px", fontWeight: 700, marginBottom: "14px" }}>Date &amp; Time</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div><Label>Event Date</Label><input type="date" value={form.date} onChange={e => set("date", e.target.value)} required style={inputStyle} /></div>
-            <div>
-              <Label>Start Time</Label>
-              <select value={form.startTime} onChange={e => set("startTime", e.target.value)} style={inputStyle}>
-                <option value="">Select…</option>
-                {EVENT_TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <Label>End Time</Label>
-              <select value={form.endTime} onChange={e => set("endTime", e.target.value)} style={inputStyle}>
-                <option value="">Select…</option>
-                {EVENT_TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
+        <EventSessionFields value={sessions} onChange={setSessions} persistedIds={originalSessions.map(s => s.id)} />
 
         {/* Location */}
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
@@ -343,6 +308,7 @@ export default function AdminEventEditPage() {
           </button>
         </div>
       </form>
+      <ConfirmModal open={confirmSave} title="Update event?" message={`Update “${form.title}” with ${sessions.length} date(s)? Cancelled dates remain cancelled. Existing bookings keep their original details.`} confirmLabel="Update event" busyLabel="Saving…" busy={saving} onCancel={() => setConfirmSave(false)} onConfirm={() => void handleSave(undefined, true)} />
 
       {/* Toast */}
       {toast && (

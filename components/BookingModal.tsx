@@ -1,15 +1,9 @@
 "use client";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, CreditCard, Zap } from "lucide-react";
-import emailjs from "@emailjs/browser";
-import { createBooking } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
-
-const EMAILJS_SERVICE_ID  = "service_ccmza7t";
-const EMAILJS_TEMPLATE_ID = "template_ro58gnx";
-const EMAILJS_PUBLIC_KEY  = "F8QjNtOzTSS8DVitl";
 
 type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void };
 type Step = "form" | "success" | "error";
@@ -44,6 +38,7 @@ function loadRazorpayScript(): Promise<boolean> {
 
 export function BookingModal({ event, open, onOpenChange }: Props) {
   const router = useRouter();
+  const requestId = useRef(crypto.randomUUID());
   const [step, setStep] = useState<Step>("form");
   // Pre-select the first ticket that still has seats, not just the first one
   const firstAvailable = event.ticketTypes.find(t => t.sold < t.available) ?? event.ticketTypes[0];
@@ -78,6 +73,8 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
     });
   }
 
+  useEffect(() => { requestId.current = crypto.randomUUID(); }, [form.name, form.email, form.phone, form.ticketTypeId, form.quantity]);
+
   function validate() {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Name is required";
@@ -91,21 +88,17 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
 
   /** Opens Razorpay checkout; resolves with the payment id once verified, null if cancelled */
   async function collectPayment(): Promise<string | null> {
-    // The script download and the order creation don't depend on each other — awaiting
-    // them one after the other just adds the two latencies together before the payment
-    // window can appear, so run both at once.
-    const orderReq = (async () => {
-      const res = await fetch("/api/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: total, receipt: `evt_${event.id.slice(0, 12)}_${Date.now()}` }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok) throw new Error("ORDER_FAILED");
-      return res.json() as Promise<{ orderId: string }>;
-    })();
-
-    const [loaded, { orderId }] = await Promise.all([loadRazorpayScript(), orderReq]);
+    const res = await fetch("/api/create-order", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId: event.id, sessionId: event.selectedSessionId ?? "legacy", ticketTypeId: form.ticketTypeId, quantity: form.quantity, name: form.name, email: form.email, phone: form.phone, requestId: requestId.current }),
+    });
+    const order = await res.json();
+    if (!res.ok) throw new Error(order.error ?? "ORDER_FAILED");
+    if (Math.round(order.amount * 100) !== Math.round(total * 100)) throw new Error("Ticket prices have changed. Reload the event before paying.");
+    if (order.status === "confirmed") return "confirmed";
+    if (order.status !== "pending") throw new Error("This booking needs attention. Please contact us.");
+    const { orderId, bookingId, token } = order;
+    const loaded = await loadRazorpayScript();
     if (!loaded) throw new Error("PAYMENT_LOAD_FAILED");
 
     return new Promise((resolve, reject) => {
@@ -128,7 +121,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
             const verifyRes = await fetch("/api/verify-payment", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(response),
+              body: JSON.stringify({ ...response, bookingId, token }),
             });
             const data = await verifyRes.json();
             if (data.verified) settle(() => resolve(response.razorpay_payment_id));
@@ -151,77 +144,17 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   }
 
   async function handlePay() {
-    if (!validate()) return;
+    if (sending || !validate()) return;
     setSending(true);
     setErrorMsg("");
     setBusyLabel(total > 0 ? "Opening secure payment…" : "Confirming your booking…");
 
-    // 1. Collect payment first for paid tickets
-    let paymentId: string | null = null;
-    if (total > 0) {
-      try {
-        paymentId = await collectPayment();
-        setBusyLabel("Confirming your booking…");
-        if (paymentId === null) { setSending(false); return; } // user closed the payment window
-      } catch (err) {
-        const code = err instanceof Error ? err.message : "";
-        setErrorMsg(
-          code === "PAYMENT_FAILED" ? "Your payment could not be completed. No money was deducted — please try again."
-          : code === "VERIFY_FAILED" ? "We couldn't verify your payment. If money was deducted, please contact us on WhatsApp."
-          : "We couldn't start the payment. Please check your connection and try again.");
-        setSending(false);
-        setStep("error");
-        return;
-      }
-    }
-
     try {
-      // 2. Save the booking (atomic — fails if seats ran out)
-      await createBooking({
-        eventId:      event.id,
-        eventTitle:   event.title,
-        name:         form.name,
-        email:        form.email,
-        phone:        form.phone,
-        ticketType:   selectedTicket?.name ?? "",
-        ticketTypeId: form.ticketTypeId,
-        quantity:     form.quantity,
-        amount:       total,
-        paymentMethod: total > 0 ? "razorpay" : "free",
-        ...(paymentId ? { paymentId } : {}),
-      });
-    } catch (err) {
-      const code = err instanceof Error ? err.message : "";
-      setErrorMsg(code === "SOLD_OUT"
-        ? "Sorry, not enough seats are left for this ticket. If you completed a payment, contact us on WhatsApp for a refund."
-        : "We couldn't complete your booking. If you completed a payment, contact us on WhatsApp.");
-      setSending(false);
-      setStep("error");
-      return;
-    }
-
-    // 3. Send the email — booking is already saved, so a mail failure is not fatal
-    try {
-      await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          customer_name:  form.name,
-          customer_email: form.email,
-          customer_phone: form.phone,
-          event_title:    event.title,
-          event_date:     new Date(event.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-          event_time:     `${event.startTime} — ${event.endTime}`,
-          event_venue:    event.location,
-          ticket_type:    selectedTicket?.name ?? "",
-          quantity:       String(form.quantity),
-          amount:         total === 0 ? "Free" : `₹${total.toLocaleString()}`,
-          to_email:       form.email,
-        },
-        EMAILJS_PUBLIC_KEY
-      );
-    } catch (err) {
-      console.error("EmailJS error (booking already saved):", err);
+      const result = await collectPayment();
+      if (result === null) { setSending(false); return; }
+    } catch (error) {
+      setErrorMsg((error as Error).message || "Could not confirm your booking. Please contact us if payment was deducted.");
+      setSending(false); setStep("error"); return;
     }
     setSending(false);
     setStep("success");
@@ -252,10 +185,10 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
             <div style={{ padding: "48px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
               <CheckCircle2 size={56} style={{ color: "#0F332B" }} />
               <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700 }}>Booking Confirmed!</h2>
-              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "15px", lineHeight: 1.7 }}>A confirmation email has been sent to <strong>{form.email}</strong>. See you at the event!</p>
+              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "15px", lineHeight: 1.7 }}>Your confirmation email is queued for <strong>{form.email}</strong>. See you at the event!</p>
               <div style={{ backgroundColor: "#EEE2D5", borderRadius: "12px", padding: "20px 24px", width: "100%", marginTop: "8px", textAlign: "left" }}>
                 <p style={{ fontFamily: "Poppins, sans-serif", color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "14px" }}>Booking Summary</p>
-                {[["Event", event.title], ["Name", form.name], ["Email", form.email], ["Ticket", selectedTicket?.name ?? "—"], ["Quantity", String(form.quantity)], ...(total > 0 ? [["Payment", PAYMENT_METHODS.find(p => p.id === form.paymentMethod)?.label ?? "—"]] : []), ["Total Paid", total === 0 ? "Free" : `₹${total.toLocaleString()}`]].map(([k, v]) => (
+                {[["Event", event.title], ["Date", event.date], ["Time", `${event.startTime}–${event.endTime} IST`], ["Name", form.name], ["Email", form.email], ["Ticket", selectedTicket?.name ?? "—"], ["Quantity", String(form.quantity)], ...(total > 0 ? [["Payment", PAYMENT_METHODS.find(p => p.id === form.paymentMethod)?.label ?? "—"]] : []), ["Total Paid", total === 0 ? "Free" : `₹${total.toLocaleString()}`]].map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                     <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.7 }}>{k}</span>
                     <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{v}</span>
@@ -292,6 +225,7 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
                   <button style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", opacity: 0.5, flexShrink: 0 }}><X size={20} /></button>
                 </Dialog.Close>
               </div>
+              <p style={{ padding: "16px 32px 0", fontWeight: 600 }}>{event.date} · {event.startTime}–{event.endTime} IST</p>
               <div style={{ padding: "24px 32px 32px", display: "flex", flexDirection: "column", gap: "18px" }}>
                 <Field label="Full Name" icon={<User size={14} />} error={errors.name}>
                   <input type="text" placeholder="Your full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle(!!errors.name)} />

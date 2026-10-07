@@ -2,8 +2,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, CalendarDays, DollarSign, Ticket, Plus, Search, Trash2 } from "lucide-react";
-import { getEvents, getBookings, deleteEvent, backfillEventMedia } from "@/lib/firestore";
+import { getEvents, getBookings, deleteEvent } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
+import { bookingStatus } from "@/components/BookingStatusChip";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 const MONTHS = ["All Months","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -21,10 +22,7 @@ export default function AdminDashboardPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    const eventsReady = backfillEventMedia().catch(() => {
-      setLoadError("Existing events could not be updated with optional media fields. Check Firestore permissions and reload to retry.");
-    }).then(getEvents);
-    Promise.all([eventsReady, getBookings()]).then(([evts, bkgs]) => {
+    Promise.all([getEvents(), getBookings()]).then(([evts, bkgs]) => {
       setEvents(evts);
       setBookings(bkgs);
       setLoading(false);
@@ -34,8 +32,8 @@ export default function AdminDashboardPage() {
     });
   }, []);
 
-  const totalRevenue = bookings.reduce((s, b) => s + b.amount, 0);
-  const totalSold    = events.reduce((s, e) => s + e.ticketTypes.reduce((a, t) => a + t.sold, 0), 0);
+  const totalRevenue = bookings.filter(b => bookingStatus(b, events.find(e => e.id === b.eventId)) === "confirmed").reduce((s, b) => s + b.amount, 0);
+  const totalSold = bookings.filter(b => bookingStatus(b, events.find(e => e.id === b.eventId)) === "confirmed").reduce((sum,b) => sum + b.quantity,0);
 
   const stats = [
     { label: "Total Bookings", value: String(bookings.length),             color: "#C8734F", Icon: BookOpen    },
@@ -57,11 +55,12 @@ export default function AdminDashboardPage() {
   async function handleDelete() {
     if (!confirmId) return;
     setDeleting(confirmId);
+    try {
     await deleteEvent(confirmId);
     setEvents(p => p.filter(e => e.id !== confirmId));
     setBookings(p => p.filter(b => b.eventId !== confirmId));
-    setDeleting(null);
-    setConfirmId(null);
+    } catch (error) { setLoadError((error as Error).message); }
+    finally { setDeleting(null); setConfirmId(null); }
   }
 
   return (
@@ -165,7 +164,8 @@ export default function AdminDashboardPage() {
       <ConfirmModal
         open={!!confirmId}
         title="Delete this event?"
-        message="The event and all of its bookings will be permanently removed. This cannot be undone."
+        message="Permanently delete this event? Events with bookings or cancelled dates are protected. This cannot be undone."
+        requiredText={events.find(e => e.id === confirmId)?.title}
         busy={!!deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmId(null)}
