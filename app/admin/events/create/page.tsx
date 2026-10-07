@@ -3,6 +3,11 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2, Upload, X, Eye, CheckCircle2, AlertCircle } from "lucide-react";
 import { createEvent } from "@/lib/firestore";
+import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
+import { EventDescription } from "@/components/EventDescription";
+import { EventVideoFields } from "@/components/EventVideoFields";
+import { EventVideos } from "@/components/EventVideos";
+import { descriptionText, normalizeYouTubeUrls, safeExternalUrl, youtubeVideoId } from "@/lib/event-content";
 import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
 
 type TicketDraft = { id: string; name: string; available: string; price: string };
@@ -25,6 +30,7 @@ export default function AdminEventCreatePage() {
   const [form, setForm] = useState({ title: "", description: "", date: "", startTime: "", endTime: "", location: "", locationUrl: "", category: "" });
   const [tickets, setTickets] = useState<TicketDraft[]>([newTicket()]);
   const [heroBanner, setHeroBanner] = useState<string | null>(null);
+  const [youtubeLinks, setYoutubeLinks] = useState<[string, string]>(["", ""]);
   const [galleryImgs, setGalleryImgs] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -74,7 +80,7 @@ export default function AdminEventCreatePage() {
 
   async function onGalleryFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []).slice(0, 4 - galleryImgs.length);
-    if (!files.length) return;
+    if (!files.length || galleryUploading) return;
     setGalleryUploading(true);
     const startCount = galleryImgs.length;
     const localUrls = files.map(f => URL.createObjectURL(f));
@@ -93,6 +99,7 @@ export default function AdminEventCreatePage() {
       setToast({ type: "error", msg: "Gallery upload failed. Please try again." });
     } finally {
       setGalleryUploading(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
 
@@ -102,6 +109,18 @@ export default function AdminEventCreatePage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!descriptionText(form.description, "html").trim()) {
+      setToast({ type: "error", msg: "Enter an event description." });
+      return;
+    }
+    if (youtubeLinks.some((url) => url.trim() && !youtubeVideoId(url))) {
+      setToast({ type: "error", msg: "Enter valid YouTube video links or leave them empty." });
+      return;
+    }
+    if (form.locationUrl.trim() && !safeExternalUrl(form.locationUrl)) {
+      setToast({ type: "error", msg: "Enter a valid http:// or https:// venue URL." });
+      return;
+    }
     const validTickets = tickets.filter(t => t.name.trim() && Number(t.available) > 0);
     if (validTickets.length === 0) {
       setToast({ type: "error", msg: "Add at least one ticket type with a name and quantity." });
@@ -116,12 +135,14 @@ export default function AdminEventCreatePage() {
       await createEvent({
         title:       form.title,
         description: form.description,
+        descriptionFormat: "html",
+        youtubeUrls: normalizeYouTubeUrls(youtubeLinks),
         category:    form.category,
         date:        form.date,
         startTime:   formatTime(form.startTime),
         endTime:     formatTime(form.endTime),
         location:    form.location,
-        locationUrl: form.locationUrl,
+        locationUrl: safeExternalUrl(form.locationUrl) ?? "",
         image:       heroBanner ?? "",
         gallery:     galleryImgs,
         ticketTypes: validTickets
@@ -185,8 +206,10 @@ export default function AdminEventCreatePage() {
         {/* Description */}
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
           <Label>Description</Label>
-          <textarea value={form.description} onChange={e => set("description", e.target.value)} required rows={4} placeholder="Full event description…" style={{ ...inputStyle, resize: "vertical" }} />
+          <EventDescriptionEditor value={form.description} onChange={(html) => set("description", html)} />
         </div>
+
+        <EventVideoFields values={youtubeLinks} onChange={setYoutubeLinks} />
 
         {/* Date & Time */}
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
@@ -218,8 +241,8 @@ export default function AdminEventCreatePage() {
             <div>
               <Label>Google Maps URL</Label>
               <input value={form.locationUrl} onChange={e => set("locationUrl", e.target.value)} placeholder="https://maps.google.com/…" style={inputStyle} />
-              {form.locationUrl && (
-                <a href={form.locationUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: "6px", fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", textDecoration: "underline" }}>Open in Maps ↗</a>
+              {safeExternalUrl(form.locationUrl) && (
+                <a href={safeExternalUrl(form.locationUrl) ?? undefined} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: "6px", fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", textDecoration: "underline" }}>Open in Maps ↗</a>
               )}
             </div>
           </div>
@@ -259,7 +282,7 @@ export default function AdminEventCreatePage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
             <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "16px", fontWeight: 700 }}>Gallery Images <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 400, opacity: 0.5 }}>({galleryImgs.length}/4){galleryUploading && " · Uploading…"}</span></p>
             {galleryImgs.length < 4 && (
-              <button type="button" onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "7px 16px", cursor: "pointer" }}>
+              <button type="button" disabled={galleryUploading} onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "7px 16px", cursor: "pointer" }}>
                 <Plus size={13} /> Add Images
               </button>
             )}
@@ -275,14 +298,14 @@ export default function AdminEventCreatePage() {
                   </div>
                 )}
                 {!galleryUploading && (
-                  <button type="button" onClick={() => removeGallery(i)} style={{ position: "absolute", top: "6px", right: "6px", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.55)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <button type="button" disabled={galleryUploading} onClick={() => removeGallery(i)} style={{ position: "absolute", top: "6px", right: "6px", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.55)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                     <X size={12} color="#fff" />
                   </button>
                 )}
               </div>
             ))}
             {galleryImgs.length < 4 && Array.from({ length: 4 - galleryImgs.length }).map((_, i) => (
-              <button key={i} type="button" onClick={() => galleryInputRef.current?.click()} style={{ aspectRatio: "1/1", borderRadius: "10px", border: "2px dashed #EEE2D5", background: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <button key={i} type="button" disabled={galleryUploading} onClick={() => galleryInputRef.current?.click()} style={{ aspectRatio: "1/1", borderRadius: "10px", border: "2px dashed #EEE2D5", background: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 <Plus size={20} style={{ color: "#EEE2D5" }} />
               </button>
             ))}
@@ -352,7 +375,8 @@ export default function AdminEventCreatePage() {
             <div style={{ padding: "24px 24px 28px" }}>
               {form.category && <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: 600, backgroundColor: "rgba(201,162,95,0.2)", color: "#C9A25F", borderRadius: "9999px", padding: "4px 14px" }}>{form.category}</span>}
               <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px", fontWeight: 700, margin: "12px 0 8px" }}>{form.title || "Event Title"}</h2>
-              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", lineHeight: 1.8, marginBottom: "20px", opacity: 0.8 }}>{form.description || "—"}</p>
+              <EventDescription value={form.description} format="html" />
+              <EventVideos urls={youtubeLinks} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
                 {[
                   { label: "Date",  value: form.date ? new Date(form.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "—" },
@@ -364,10 +388,10 @@ export default function AdminEventCreatePage() {
                     <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 500 }}>{f.value}</p>
                   </div>
                 ))}
-                {form.locationUrl && (
+                {safeExternalUrl(form.locationUrl) && (
                   <div style={{ backgroundColor: "#EEE2D540", borderRadius: "10px", padding: "12px 14px" }}>
                     <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "10px", opacity: 0.5, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: "3px" }}>Location</p>
-                    <a href={form.locationUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "13px", fontWeight: 500 }}>Open in Maps ↗</a>
+                    <a href={safeExternalUrl(form.locationUrl) ?? undefined} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "13px", fontWeight: 500 }}>Open in Maps ↗</a>
                   </div>
                 )}
               </div>

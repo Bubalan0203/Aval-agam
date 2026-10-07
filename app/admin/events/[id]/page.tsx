@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Clock, MapPin, Ticket, Trash2, Edit2, Mail, Phone, User } from "lucide-react";
+import { EventDescription } from "@/components/EventDescription";
+import { EventVideos } from "@/components/EventVideos";
 import { getEvent, getEventBookings, deleteEvent } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -124,6 +126,9 @@ export default function AdminEventDetailPage() {
           </div>
         </div>
       </div>
+
+      <EventDescription value={event.description} format={event.descriptionFormat} />
+      <EventVideos urls={event.youtubeUrls} />
 
       {/* Gallery */}
       {event.gallery.length > 0 && (

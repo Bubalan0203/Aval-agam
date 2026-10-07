@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, CalendarDays, DollarSign, Ticket, Plus, Search, Trash2 } from "lucide-react";
-import { getEvents, getBookings, deleteEvent } from "@/lib/firestore";
+import { getEvents, getBookings, deleteEvent, backfillEventMedia } from "@/lib/firestore";
 import type { Event, Booking } from "@/lib/firestore";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -14,15 +14,22 @@ export default function AdminDashboardPage() {
   const [events, setEvents]   = useState<Event[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch]   = useState("");
   const [month, setMonth]     = useState("All Months");
   const [year, setYear]       = useState("All Years");
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getEvents(), getBookings()]).then(([evts, bkgs]) => {
+    const eventsReady = backfillEventMedia().catch(() => {
+      setLoadError("Existing events could not be updated with optional media fields. Check Firestore permissions and reload to retry.");
+    }).then(getEvents);
+    Promise.all([eventsReady, getBookings()]).then(([evts, bkgs]) => {
       setEvents(evts);
       setBookings(bkgs);
+      setLoading(false);
+    }).catch(() => {
+      setLoadError("Could not load events and bookings. Check Firebase configuration and permissions, then reload.");
       setLoading(false);
     });
   }, []);
@@ -59,6 +66,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+      {loadError && <p role="alert" style={{ color: "#a54c2c" }}>{loadError}</p>}
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>

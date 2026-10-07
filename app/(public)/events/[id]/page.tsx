@@ -5,6 +5,8 @@ import { Calendar, Clock, MapPin, ArrowLeft, X } from "lucide-react";
 import { getEvent, getEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 import { BookingModal } from "@/components/BookingModal";
+import { EventDescription } from "@/components/EventDescription";
+import { EventVideos } from "@/components/EventVideos";
 import { EventCard } from "@/components/EventCard";
 
 function formatDate(d: string) {
@@ -19,7 +21,6 @@ export default function EventDetailsPage() {
   const [otherEvents, setOtherEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeImg, setActiveImg] = useState(0);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export default function EventDetailsPage() {
   }
 
   const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
-  const galleryAll = [event.image, ...event.gallery];
+  const galleryAll = event.gallery;
 
   return (
     <div style={{ fontFamily: "Poppins, sans-serif" }}>
@@ -119,11 +120,13 @@ export default function EventDetailsPage() {
               {/* About */}
               <div>
                 <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px", fontWeight: 700, marginBottom: "14px" }}>About this event</h2>
-                <p style={{ color: "#2F3328", fontSize: "16px", lineHeight: 1.85 }}>{event.description}</p>
+                <EventDescription value={event.description} format={event.descriptionFormat} />
               </div>
 
+              <EventVideos urls={event.youtubeUrls} />
+
               {/* Map + Gallery side by side */}
-              <div className={`grid gap-6 ${galleryAll.length > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`} style={{ alignItems: "end" }}>
+              <div className={`grid gap-6 ${galleryAll.length > 0 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`} style={{ alignItems: "end" }}>
                 {/* Map card */}
                 <div>
                   <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "10px" }}>Venue</h2>
@@ -134,10 +137,11 @@ export default function EventDetailsPage() {
                     </div>
                   </div>
                   <p style={{ color: "#2F3328", fontSize: "13px", opacity: 0.6, lineHeight: 1.5 }}>{event.location}</p>
+                  {event.locationUrl && <a href={event.locationUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", textDecoration: "underline", fontSize: "13px" }}>Open venue in Maps ↗</a>}
                 </div>
 
                 {/* Gallery */}
-                {galleryAll.length > 1 && (
+                {galleryAll.length > 0 && (
                   <div>
                     <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "10px" }}>Gallery</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

@@ -16,7 +16,18 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 export const db   = getFirestore(app);
 export const auth = getAuth(app);
+// Analytics is optional and should not send local development activity.
+// Vercel exports Sensitive variables as placeholders, which are not credentials.
+const analyticsConfigured = [
+  firebaseConfig.apiKey,
+  firebaseConfig.projectId,
+  firebaseConfig.appId,
+  firebaseConfig.measurementId,
+].every((value) => Boolean(value?.trim()) && !value?.includes("[SENSITIVE]"));
+
 export const analyticsPromise =
-  typeof window === "undefined"
+  typeof window === "undefined" || process.env.NODE_ENV !== "production" || !analyticsConfigured
     ? Promise.resolve(null)
-    : isSupported().then((supported) => (supported ? getAnalytics(app) : null));
+    : isSupported()
+        .then((supported) => (supported ? getAnalytics(app) : null))
+        .catch(() => null);

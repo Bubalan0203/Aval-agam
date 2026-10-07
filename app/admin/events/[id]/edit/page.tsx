@@ -4,6 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2, Upload, X, CheckCircle2, AlertCircle } from "lucide-react";
 import { getEvent, updateEvent } from "@/lib/firestore";
 import type { TicketType } from "@/lib/firestore";
+import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
+import { EventVideoFields } from "@/components/EventVideoFields";
+import { descriptionHtml, descriptionText, normalizeYouTubeUrls, safeExternalUrl, youtubeVideoId } from "@/lib/event-content";
 import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
 
 type TicketDraft = { id: string; name: string; available: string; price: string; sold: number };
@@ -48,6 +51,7 @@ export default function AdminEventEditPage() {
   const [form, setForm]         = useState({ title: "", description: "", date: "", startTime: "", endTime: "", location: "", locationUrl: "", category: "" });
   const [tickets, setTickets]   = useState<TicketDraft[]>([]);
   const [heroBanner, setHeroBanner]   = useState<string | null>(null);
+  const [youtubeLinks, setYoutubeLinks] = useState<[string, string]>(["", ""]);
   const [galleryImgs, setGalleryImgs] = useState<string[]>([]);
   const [heroUploading, setHeroUploading]       = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
@@ -61,7 +65,7 @@ export default function AdminEventEditPage() {
       if (!evt) { router.push("/admin/dashboard"); return; }
       setForm({
         title:       evt.title,
-        description: evt.description,
+        description: descriptionHtml(evt.description, evt.descriptionFormat),
         date:        evt.date,
         startTime:   parseTime(evt.startTime),
         endTime:     parseTime(evt.endTime),
@@ -71,6 +75,7 @@ export default function AdminEventEditPage() {
       });
       setHeroBanner(evt.image);
       setGalleryImgs(evt.gallery);
+      setYoutubeLinks([evt.youtubeUrls?.[0] ?? "", evt.youtubeUrls?.[1] ?? ""]);
       setTickets(evt.ticketTypes.map(t => ({ id: t.id, name: t.name, available: String(t.available), price: String(t.price), sold: t.sold })));
       setLoading(false);
     });
@@ -110,7 +115,7 @@ export default function AdminEventEditPage() {
 
   async function onGalleryFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []).slice(0, 4 - galleryImgs.length);
-    if (!files.length) return;
+    if (!files.length || galleryUploading) return;
     const startCount = galleryImgs.length;
     setGalleryImgs(p => [...p, ...files.map(f => URL.createObjectURL(f))].slice(0, 4));
     setGalleryUploading(true);
@@ -121,13 +126,25 @@ export default function AdminEventEditPage() {
     } catch {
       setGalleryImgs(p => p.slice(0, startCount));
       setToast({ type: "error", msg: "Gallery upload failed. Try again." });
-    } finally { setGalleryUploading(false); }
+    } finally { setGalleryUploading(false); if (galleryInputRef.current) galleryInputRef.current.value = ""; }
   }
 
   function removeGallery(i: number) { setGalleryImgs(p => p.filter((_, idx) => idx !== i)); }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!descriptionText(form.description, "html").trim()) {
+      setToast({ type: "error", msg: "Enter an event description." });
+      return;
+    }
+    if (youtubeLinks.some((url) => url.trim() && !youtubeVideoId(url))) {
+      setToast({ type: "error", msg: "Enter valid YouTube video links or leave them empty." });
+      return;
+    }
+    if (form.locationUrl.trim() && !safeExternalUrl(form.locationUrl)) {
+      setToast({ type: "error", msg: "Enter a valid http:// or https:// venue URL." });
+      return;
+    }
     const updatedTickets: TicketType[] = tickets.filter(t => t.name.trim() && Number(t.available) > 0).map(t => ({
       id: t.id, name: t.name, price: Number(t.price) || 0,
       available: Number(t.available) || 0, sold: t.sold,
@@ -145,12 +162,14 @@ export default function AdminEventEditPage() {
       await updateEvent(id, {
         title:       form.title,
         description: form.description,
+        descriptionFormat: "html",
+        youtubeUrls: normalizeYouTubeUrls(youtubeLinks),
         category:    form.category,
         date:        form.date,
         startTime:   formatTime(form.startTime),
         endTime:     formatTime(form.endTime),
         location:    form.location,
-        locationUrl: form.locationUrl,
+        locationUrl: safeExternalUrl(form.locationUrl) ?? "",
         image:       heroBanner ?? "",
         gallery:     galleryImgs,
         ticketTypes: updatedTickets,
@@ -201,8 +220,10 @@ export default function AdminEventEditPage() {
         {/* Description */}
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
           <Label>Description</Label>
-          <textarea value={form.description} onChange={e => set("description", e.target.value)} required rows={4} style={{ ...inputStyle, resize: "vertical" }} />
+          <EventDescriptionEditor value={form.description} onChange={(html) => set("description", html)} />
         </div>
+
+        <EventVideoFields values={youtubeLinks} onChange={setYoutubeLinks} />
 
         {/* Date & Time */}
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
@@ -234,7 +255,7 @@ export default function AdminEventEditPage() {
             <div>
               <Label>Google Maps URL</Label>
               <input value={form.locationUrl} onChange={e => set("locationUrl", e.target.value)} placeholder="https://maps.google.com/…" style={inputStyle} />
-              {form.locationUrl && <a href={form.locationUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: "6px", fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", textDecoration: "underline" }}>Open in Maps ↗</a>}
+              {safeExternalUrl(form.locationUrl) && <a href={safeExternalUrl(form.locationUrl) ?? undefined} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: "6px", fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", textDecoration: "underline" }}>Open in Maps ↗</a>}
             </div>
           </div>
         </div>
@@ -270,7 +291,7 @@ export default function AdminEventEditPage() {
         <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
             <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "16px", fontWeight: 700 }}>Gallery <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 400, opacity: 0.5 }}>({galleryImgs.length}/4){galleryUploading && " · Uploading…"}</span></p>
-            {galleryImgs.length < 4 && <button type="button" onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "7px 16px", cursor: "pointer" }}><Plus size={13} /> Add Images</button>}
+            {galleryImgs.length < 4 && <button type="button" disabled={galleryUploading} onClick={() => galleryInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "12px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "7px 16px", cursor: "pointer" }}><Plus size={13} /> Add Images</button>}
           </div>
           <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={onGalleryFiles} style={{ display: "none" }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
@@ -282,12 +303,12 @@ export default function AdminEventEditPage() {
                     <div style={{ width: "24px", height: "24px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", animation: "spin 0.8s linear infinite" }} />
                   </div>
                 ) : (
-                  <button type="button" onClick={() => removeGallery(i)} style={{ position: "absolute", top: "6px", right: "6px", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.55)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={12} color="#fff" /></button>
+                  <button type="button" disabled={galleryUploading} onClick={() => removeGallery(i)} style={{ position: "absolute", top: "6px", right: "6px", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.55)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={12} color="#fff" /></button>
                 )}
               </div>
             ))}
             {galleryImgs.length < 4 && Array.from({ length: 4 - galleryImgs.length }).map((_, i) => (
-              <button key={i} type="button" onClick={() => galleryInputRef.current?.click()} style={{ aspectRatio: "1/1", borderRadius: "10px", border: "2px dashed #EEE2D5", background: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <button key={i} type="button" disabled={galleryUploading} onClick={() => galleryInputRef.current?.click()} style={{ aspectRatio: "1/1", borderRadius: "10px", border: "2px dashed #EEE2D5", background: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 <Plus size={20} style={{ color: "#EEE2D5" }} />
               </button>
             ))}

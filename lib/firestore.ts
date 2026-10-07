@@ -2,7 +2,8 @@ import {
   collection, doc, getDocs, getDoc, addDoc, deleteDoc, updateDoc,
   query, orderBy, where, serverTimestamp, Timestamp, runTransaction,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
+import { eventMediaDefaults, legacyEventMediaPatch, sanitizeDescription, type DescriptionFormat, type YouTubeUrls } from "./event-content";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ export type Event = {
   id:          string;
   title:       string;
   description: string;
+  descriptionFormat?: DescriptionFormat;
+  youtubeUrls?: YouTubeUrls;
   category:    string;
   date:        string;
   startTime:   string;
@@ -47,21 +50,40 @@ export type Booking = {
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
+/** Backfill legacy documents after admin login; safe to retry and concurrent edits are preserved. */
+export async function backfillEventMedia(): Promise<void> {
+  if (!auth.currentUser) throw new Error("AUTH_REQUIRED");
+  const snap = await getDocs(collection(db, "events"));
+  for (let offset = 0; offset < snap.docs.length; offset += 20) {
+    await Promise.all(snap.docs.slice(offset, offset + 20).map(async (eventDoc) => {
+      if (!Object.keys(legacyEventMediaPatch(eventDoc.data())).length) return;
+      await runTransaction(db, async (tx) => {
+        const current = await tx.get(eventDoc.ref);
+        if (!current.exists()) return;
+        const patch = legacyEventMediaPatch(current.data());
+        if (Object.keys(patch).length) tx.update(eventDoc.ref, patch);
+      });
+    }));
+  }
+}
+
 export async function getEvents(): Promise<Event[]> {
   const q = query(collection(db, "events"), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Event));
+  return snap.docs.map(d => ({ ...d.data(), ...eventMediaDefaults(d.data()), id: d.id } as Event));
 }
 
 export async function getEvent(id: string): Promise<Event | null> {
   const snap = await getDoc(doc(db, "events", id));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as Event;
+  return { ...snap.data(), ...eventMediaDefaults(snap.data()), id: snap.id } as Event;
 }
 
 export async function createEvent(data: Omit<Event, "id" | "createdAt">): Promise<string> {
   const ref = await addDoc(collection(db, "events"), {
     ...data,
+    ...eventMediaDefaults(data),
+    description: data.descriptionFormat === "html" ? sanitizeDescription(data.description) : data.description,
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -75,7 +97,11 @@ export async function deleteEvent(id: string): Promise<void> {
 }
 
 export async function updateEvent(id: string, data: Omit<Event, "id" | "createdAt">): Promise<void> {
-  await updateDoc(doc(db, "events", id), { ...data });
+  await updateDoc(doc(db, "events", id), {
+    ...data,
+    ...eventMediaDefaults(data),
+    description: data.descriptionFormat === "html" ? sanitizeDescription(data.description) : data.description,
+  });
 }
 
 // ── Bookings ─────────────────────────────────────────────────────────────────
