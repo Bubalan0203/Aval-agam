@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Calendar, Clock, MapPin, ArrowLeft, X } from "lucide-react";
+import { normalizeYouTubeUrls } from "@/lib/event-content";
 import { getEvent, getEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 import { BookingModal } from "@/components/BookingModal";
@@ -37,6 +38,11 @@ export default function EventDetailsPage() {
     });
   }, [id]);
 
+  // Reset after async content mounts as well as when navigating between events.
+  useEffect(() => {
+    if (!loading && event?.id === id) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [id, loading, event?.id]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxImg(null); };
     window.addEventListener("keydown", handler);
@@ -68,6 +74,7 @@ export default function EventDetailsPage() {
 
   const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
   const galleryAll = event.gallery;
+  const hasVideos = normalizeYouTubeUrls(event.youtubeUrls).some(Boolean);
 
   return (
     <div style={{ fontFamily: "Poppins, sans-serif" }}>
@@ -112,6 +119,7 @@ export default function EventDetailsPage() {
                     <div>
                       <p style={{ color: "#2F3328", fontSize: "11px", opacity: 0.55, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "2px" }}>{f.label}</p>
                       <p style={{ color: "#0F332B", fontSize: "14px", fontWeight: 500, lineHeight: 1.4 }}>{f.value}</p>
+                      {f.label === "Venue" && event.locationUrl && <a href={event.locationUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", fontSize: "12px", textDecoration: "underline", display: "inline-block", marginTop: "5px" }}>Open in Google Maps ↗</a>}
                     </div>
                   </div>
                 ))}
@@ -123,37 +131,24 @@ export default function EventDetailsPage() {
                 <EventDescription value={event.description} format={event.descriptionFormat} />
               </div>
 
-              <EventVideos urls={event.youtubeUrls} />
-
-              {/* Map + Gallery side by side */}
-              <div className={`grid gap-6 ${galleryAll.length > 0 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`} style={{ alignItems: "end" }}>
-                {/* Map card */}
-                <div>
-                  <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "10px" }}>Venue</h2>
-                  <div style={{ backgroundColor: "#EEE2D5", borderRadius: "14px", height: "130px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed #C9A25F", marginBottom: "8px" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <MapPin size={22} style={{ color: "#C9A25F", margin: "0 auto 6px" }} />
-                      <p style={{ color: "#2F3328", fontSize: "12px", opacity: 0.6, padding: "0 12px" }}>{event.location}</p>
-                    </div>
-                  </div>
-                  <p style={{ color: "#2F3328", fontSize: "13px", opacity: 0.6, lineHeight: 1.5 }}>{event.location}</p>
-                  {event.locationUrl && <a href={event.locationUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", textDecoration: "underline", fontSize: "13px" }}>Open venue in Maps ↗</a>}
+              {/* Optional compact media: videos left, uploaded photos right. */}
+              {(hasVideos || galleryAll.length > 0) && (
+                <div className={`grid grid-cols-1 gap-6 ${hasVideos && galleryAll.length > 0 ? "md:grid-cols-2" : ""}`} style={{ maxWidth: "820px", alignItems: "start" }}>
+                  {hasVideos && <EventVideos urls={event.youtubeUrls} compact />}
+                  {galleryAll.length > 0 && (
+                    <section aria-label="Event gallery" style={{ maxWidth: "360px", width: "100%" }}>
+                      <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "14px" }}>Gallery</h2>
+                      <div className="grid grid-cols-2 gap-2">
+                        {galleryAll.slice(0, 4).map((img, i) => (
+                          <button key={i} type="button" aria-label={`View gallery photo ${i + 1}`} onClick={() => setLightboxImg(img)} style={{ aspectRatio: "1/1", borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", display: "block" }}>
+                            <img src={img} alt={`Gallery ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                 </div>
-
-                {/* Gallery */}
-                {galleryAll.length > 0 && (
-                  <div>
-                    <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "10px" }}>Gallery</h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {galleryAll.slice(0, 4).map((img, i) => (
-                        <button key={i} onClick={() => setLightboxImg(img)} style={{ aspectRatio: "1/1", borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", display: "block" }}>
-                          <img src={img} alt={`Gallery ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transition: "transform 0.2s" }} onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.05)")} onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
