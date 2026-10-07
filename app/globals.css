@@ -31,6 +31,16 @@ body {
 .event-rich-text pre { background: #eee2d5; padding: 16px; border-radius: 8px; overflow-x: auto; }
 .event-rich-text code { font-family: monospace; background: #eee2d5; padding: 2px 4px; border-radius: 3px; }
 .event-rich-text hr { border-top: 1px solid #c9a25f; margin: 1em 0; }
+.event-description-preview .event-rich-text,
+.event-description-preview .event-rich-text * { font-size: 13px !important; line-height: 22.1px !important; }
+.event-description-preview .event-rich-text p,
+.event-description-preview .event-rich-text h2,
+.event-description-preview .event-rich-text h3,
+.event-description-preview .event-rich-text h4 { margin: 0; }
+.event-description-preview .event-rich-text ul,
+.event-description-preview .event-rich-text ol { margin: 0; padding-left: 18px; }
+.event-description-preview .event-rich-text pre { margin: 0; padding: 0 4px; white-space: pre-wrap; }
+.event-description-preview .event-rich-text blockquote { margin: 0; }
 .event-description-editor { border: 1.5px solid #eee2d5; border-radius: 10px; background: white; overflow: hidden; }
 .event-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: #f5efe4; padding: 10px; border-bottom: 1px solid #eee2d5; }
 .event-editor-toolbar button, .event-editor-toolbar select, .event-editor-link button { padding: 5px 8px; font-size: 12px; border: 1px solid #d6c9b9; border-radius: 5px; background: white; color: #0f332b; cursor: pointer; }
