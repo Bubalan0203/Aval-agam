@@ -2,12 +2,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Calendar, Clock, MapPin, ArrowLeft, X } from "lucide-react";
-import { normalizeYouTubeUrls } from "@/lib/event-content";
 import { getEvent, getEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 import { BookingModal } from "@/components/BookingModal";
 import { EventDescription } from "@/components/EventDescription";
-import { EventVideos } from "@/components/EventVideos";
+import { EventMediaGallery } from "@/components/EventMediaGallery";
 import { EventCard } from "@/components/EventCard";
 
 function formatDate(d: string) {
@@ -73,8 +72,6 @@ export default function EventDetailsPage() {
   }
 
   const isSoldOut = event.ticketTypes.length > 0 && event.ticketTypes.every(t => t.sold >= t.available);
-  const galleryAll = event.gallery;
-  const hasVideos = normalizeYouTubeUrls(event.youtubeUrls).some(Boolean);
 
   return (
     <div style={{ fontFamily: "Poppins, sans-serif" }}>
@@ -131,24 +128,7 @@ export default function EventDetailsPage() {
                 <EventDescription value={event.description} format={event.descriptionFormat} />
               </div>
 
-              {/* Optional compact media: videos left, uploaded photos right. */}
-              {(hasVideos || galleryAll.length > 0) && (
-                <div className={`grid grid-cols-1 gap-6 ${hasVideos && galleryAll.length > 0 ? "md:grid-cols-2" : ""}`} style={{ maxWidth: "820px", alignItems: "start" }}>
-                  {hasVideos && <EventVideos urls={event.youtubeUrls} compact />}
-                  {galleryAll.length > 0 && (
-                    <section aria-label="Event gallery" style={{ maxWidth: "360px", width: "100%" }}>
-                      <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, marginBottom: "14px" }}>Gallery</h2>
-                      <div className="grid grid-cols-2 gap-2">
-                        {galleryAll.slice(0, 4).map((img, i) => (
-                          <button key={i} type="button" aria-label={`View gallery photo ${i + 1}`} onClick={() => setLightboxImg(img)} style={{ aspectRatio: "1/1", borderRadius: "10px", overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", display: "block" }}>
-                            <img src={img} alt={`Gallery ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              )}
+              <EventMediaGallery key={event.id} urls={event.youtubeUrls} photos={event.gallery} onPhotoOpen={setLightboxImg} />
             </div>
           </div>
         </div>

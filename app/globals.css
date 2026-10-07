@@ -42,3 +42,25 @@ body {
 .event-description-input:focus { box-shadow: inset 0 0 0 2px #c9a25f; }
 .event-editor-link { padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .event-editor-link input { border: 1px solid #d6c9b9; border-radius: 4px; padding: 6px; }
+
+.event-media-gallery { display: grid; gap: 24px; width: 100%; }
+.event-media-gallery--single { max-width: 760px; margin-inline: auto; }
+.event-media-section { min-width: 0; }
+.event-media-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; min-height: 36px; margin-bottom: 12px; }
+.event-media-heading h2 { font-family: "Playfair Display", serif; font-size: 22px; font-weight: 700; color: #0f332b; }
+.event-photo-count { font-size: 12px; color: #676b61; }
+.event-video-switch { display: flex; padding: 3px; border: 1px solid #e2d5c4; border-radius: 999px; background: #f0e7da; gap: 3px; }
+.event-video-switch button { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #0f332b; cursor: pointer; }
+.event-video-switch button[aria-pressed="true"] { background: #0f332b; color: #fbf4e8; }
+.event-media-frame { background: #0f332b; border-radius: 12px; overflow: hidden; }
+.event-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 10px; aspect-ratio: 16 / 9; }
+.event-photo-grid--1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.event-photo-grid--2 { grid-template-rows: 1fr; }
+.event-photo-grid--3 button:first-child { grid-column: span 2; }
+.event-photo-grid button { position: relative; min-height: 0; min-width: 0; overflow: hidden; border-radius: 10px; background: #eee2d5; cursor: zoom-in; }
+.event-photo-grid img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 180ms ease; }
+.event-photo-grid button:hover img { transform: scale(1.04); }
+.event-photo-expand { position: absolute; bottom: 8px; right: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #0f332bcc; color: white; }
+.event-media-gallery button:focus-visible { outline: 3px solid #c9a25f; outline-offset: 3px; }
+@media (min-width: 768px) { .event-media-gallery--both { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .event-photo-grid img { transition: none; } }
