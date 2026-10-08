@@ -114,3 +114,11 @@ body {
 }
 .admin-select-item[data-highlighted] { background: #F2F4F7; }
 .admin-select-item[data-state="checked"] { font-weight: 600; }
+
+/* Readable event description on the public page */
+.event-prose .event-rich-text { font-size: 16.5px; line-height: 1.8; color: #2F3328; max-width: 70ch; }
+.event-prose .event-rich-text p { margin: 0 0 1em; }
+.event-prose .event-rich-text p:empty,
+.event-prose .event-rich-text p:has(> br:only-child) { display: none; }
+.event-prose .event-rich-text h2, .event-prose .event-rich-text h3 { font-family: "Playfair Display", serif; color: #0F332B; }
+.event-prose .event-rich-text strong { color: #0F332B; }
