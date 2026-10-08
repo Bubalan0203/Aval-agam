@@ -4,10 +4,7 @@ import { EventDescriptionPreview } from "./EventDescriptionPreview";
 import { Calendar, Clock, MapPin, Tag } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Event } from "@/lib/firestore";
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
-}
+import { formatDateShort, formatTime12 } from "@/lib/booking-logic";
 
 function minPrice(e: Event) {
   if (!e.ticketTypes.length) return "—";
@@ -46,10 +43,10 @@ export function EventCard({ event }: { event: Event }) {
         <EventDescriptionPreview value={event.description} format={event.descriptionFormat} />
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "7px", fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.75 }}>
-            <Calendar size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{formatDate(event.date)}{dates.length > 1 ? ` · ${dates.length} dates` : ""}
+            <Calendar size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{formatDateShort(event.date)}{dates.length > 1 ? ` · ${dates.length} dates` : ""}
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "7px", fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.75 }}>
-            <Clock size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{event.startTime} — {event.endTime}
+            <Clock size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{formatTime12(event.startTime)} – {formatTime12(event.endTime)}
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "7px", fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.75 }}>
             <MapPin size={13} style={{ color: "#C9A25F", flexShrink: 0 }} />{event.location}

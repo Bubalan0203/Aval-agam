@@ -138,7 +138,7 @@ function EventDetails() {
       {/* Hero */}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 0" }}>
         <button type="button" onClick={() => router.push("/#all-events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: G, marginBottom: 16 }}><ArrowLeft size={15} /> All events</button>
-        <div style={{ position: "relative", borderRadius: 24, overflow: "hidden", aspectRatio: "21/9", minHeight: 220, background: G }}>
+        <div className="aspect-[4/3] sm:aspect-[21/9]" style={{ position: "relative", borderRadius: 24, overflow: "hidden", background: G, width: "100%" }}>
           {event.image && <img src={event.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(15,51,43,0) 30%, rgba(15,51,43,0.85) 100%)" }} />
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "clamp(18px, 4vw, 40px)" }}>
@@ -199,7 +199,7 @@ function EventDetails() {
       )}
 
       {/* Mobile sticky bar */}
-      <div className="lg:hidden" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "rgba(251,244,232,0.97)", borderTop: `1px solid ${SAND}`, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, backdropFilter: "blur(8px)" }}>
+      <div className="flex lg:hidden" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "rgba(251,244,232,0.97)", borderTop: `1px solid ${SAND}`, padding: "12px 16px", alignItems: "center", justifyContent: "space-between", gap: 12, backdropFilter: "blur(8px)" }}>
         <div style={{ minWidth: 0 }}>
           <p style={{ fontSize: 16, fontWeight: 700, color: G }}>{priceLabel}</p>
           <p style={{ fontSize: 12, color: INK, opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{next ? `${formatDateShort(next.date)} · ${statusLine}` : statusLine}</p>

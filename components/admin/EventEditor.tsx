@@ -325,7 +325,7 @@ export function EventEditor({ initial }: { initial?: Event }) {
         </aside>
       </div>
       {/* Mobile / tablet save bar (the side panel sits below the form there) */}
-      <div className="xl:hidden" style={{ position: "sticky", bottom: 0, zIndex: 20, background: "#fff", borderTop: `1px solid ${C.sand}`, margin: "0 -16px -80px", padding: "12px 16px", display: "flex", gap: 8, justifyContent: "flex-end" }}>
+      <div className="flex xl:hidden" style={{ position: "sticky", bottom: 0, zIndex: 20, background: "#fff", borderTop: `1px solid ${C.sand}`, margin: "0 -16px -80px", padding: "12px 16px", gap: 8, justifyContent: "flex-end" }}>
         {status === "draft" && <Button variant="secondary" disabled={saving || uploading} onClick={() => save("draft")}>Save draft</Button>}
         <Button disabled={saving || uploading} onClick={() => save(target)}>{saving ? "Saving…" : uploading ? "Uploading…" : status === "published" ? "Save changes" : status === "archived" ? "Save" : "Publish"}</Button>
       </div>

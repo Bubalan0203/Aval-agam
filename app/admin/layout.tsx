@@ -88,7 +88,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside className="hidden lg:block" style={{ position: "fixed", top: 0, bottom: 0, left: 0, width: 260, background: "#fff", borderRight: `1px solid ${C.sand}`, zIndex: 40 }}>{sidebar}</aside>
 
       {/* Mobile top bar */}
-      <header className="lg:hidden" style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", borderBottom: `1px solid ${C.sand}`, height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+      <header className="flex lg:hidden" style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", borderBottom: `1px solid ${C.sand}`, height: 60, alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Image src="/logo.png" alt="" width={28} height={28} style={{ objectFit: "contain" }} />
           <span style={{ fontWeight: 700, fontSize: 15 }}>Aval Agam</span>
