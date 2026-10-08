@@ -1,47 +1,59 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Download, Plus, Search } from "lucide-react";
+import { Download, Plus, Search, Ticket } from "lucide-react";
 import type { Booking, BookingStatus, Event } from "@/lib/firestore";
 import { amountMismatch, formatDateShort, formatTime12, rupees } from "@/lib/booking-logic";
 import { BookingDetailDialog, ManualBookingDialog, exportBookingsCsv } from "./BookingTools";
 import { Badge, BookingStatusBadge, BOOKING_STATUS_LABEL, Button, C, Card, Empty, inputStyle } from "./ui";
 
-export function BookingsTable({ bookings, events, fixedEventId, onChanged, title = "Bookings", initialStatus = "" }: {
+export type BookingFlag = "" | "amount" | "email";
+
+export function BookingsTable({ bookings, events, fixedEventId, onChanged, title = "Bookings", initialStatus = "", initialFlag = "", initialOpenId, sessionFilter, onSessionFilter }: {
   bookings: Booking[]; events: Event[]; fixedEventId?: string;
   onChanged: (msg: string) => void; title?: string; initialStatus?: BookingStatus | "";
+  initialFlag?: BookingFlag; initialOpenId?: string;
+  sessionFilter?: string; onSessionFilter?: (id: string) => void;
 }) {
   const [q, setQ] = useState("");
   const [eventId, setEventId] = useState(fixedEventId ?? "");
-  const [sessionId, setSessionId] = useState("");
+  const [ownSession, setOwnSession] = useState("");
+  const sessionId = sessionFilter ?? ownSession;
+  const setSessionId = onSessionFilter ?? setOwnSession;
   const [status, setStatus] = useState<BookingStatus | "">(initialStatus);
-  const [open, setOpen] = useState<Booking | null>(null);
+  const [flag, setFlag] = useState<BookingFlag>(initialFlag);
+  const [openId, setOpenId] = useState<string | undefined>(initialOpenId);
   const [manual, setManual] = useState(false);
   const eventsById = useMemo(() => new Map(events.map(e => [e.id, e])), [events]);
-  const sessions = eventId ? eventsById.get(eventId)?.sessions ?? [] : [];
+  const sessions = eventId ? [...(eventsById.get(eventId)?.sessions ?? [])].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)) : [];
+  const open = bookings.find(b => b.id === openId) ?? null;
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
     return bookings.filter(b =>
       (!eventId || b.eventId === eventId) && (!sessionId || b.sessionId === sessionId) && (!status || b.status === status) &&
-      (!s || [b.id, b.name, b.email, b.phone, b.paymentId].some(v => v?.toLowerCase().includes(s))));
-  }, [bookings, q, eventId, sessionId, status]);
+      (flag !== "amount" || (b.status === "confirmed" && amountMismatch(b, eventsById.get(b.eventId)))) &&
+      (flag !== "email" || (b.status === "confirmed" && !b.confirmationEmailSentAt && b.source === "website" && !!b.history?.length)) &&
+      (!s || [b.id, b.name, b.email, b.phone, b.paymentId, b.eventTitle].some(v => v?.toLowerCase().includes(s))));
+  }, [bookings, q, eventId, sessionId, status, flag, eventsById]);
 
-  const seats = rows.filter(b => b.status === "confirmed").reduce((n, b) => n + b.quantity, 0);
-  const revenue = rows.filter(b => b.status === "confirmed").reduce((n, b) => n + b.amount, 0);
+  const confirmed = rows.filter(b => b.status === "confirmed");
+  const seats = confirmed.reduce((n, b) => n + b.quantity, 0);
+  const revenue = confirmed.reduce((n, b) => n + b.amount, 0);
+  const filtered = !!(q || (!fixedEventId && eventId) || sessionId || status || flag);
 
   return (
-    <Card title={title} subtitle={`${rows.length} bookings · ${seats} confirmed seats · ${rupees(revenue)} confirmed`}
+    <Card padded={false} title={title} subtitle={`${rows.length} booking${rows.length === 1 ? "" : "s"} · ${seats} confirmed seat${seats === 1 ? "" : "s"} · ${rupees(revenue)}`}
       action={<div style={{ display: "flex", gap: 8 }}>
-        <Button variant="secondary" disabled={!rows.length} onClick={() => exportBookingsCsv(`bookings-${new Date().toISOString().slice(0, 10)}.csv`, rows)}><Download size={14} /> CSV</Button>
-        <Button onClick={() => setManual(true)}><Plus size={14} /> Add booking</Button>
+        <Button variant="secondary" disabled={!rows.length} onClick={() => exportBookingsCsv(`bookings-${new Date().toISOString().slice(0, 10)}.csv`, rows)}><Download size={16} /> Export</Button>
+        <Button onClick={() => setManual(true)}><Plus size={16} /> Add booking</Button>
       </div>}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ position: "relative", flex: "1 1 220px" }}>
-          <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.4 }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Name, email, phone, booking or payment ID" style={{ ...inputStyle(), paddingLeft: 34 }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: 16, borderBottom: `1px solid ${C.sand}` }}>
+        <div style={{ position: "relative", flex: "1 1 240px" }}>
+          <Search size={16} color={C.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, phone or ID" style={{ ...inputStyle(), paddingLeft: 38 }} />
         </div>
         {!fixedEventId && (
-          <select value={eventId} onChange={e => { setEventId(e.target.value); setSessionId(""); }} style={{ ...inputStyle(), width: "auto", maxWidth: 260 }}>
+          <select value={eventId} onChange={e => { setEventId(e.target.value); setSessionId(""); }} style={{ ...inputStyle(), width: "auto", maxWidth: 240 }}>
             <option value="">All events</option>{events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
           </select>
         )}
@@ -53,33 +65,61 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
         <select value={status} onChange={e => setStatus(e.target.value as BookingStatus | "")} style={{ ...inputStyle(), width: "auto" }}>
           <option value="">All statuses</option>{Object.entries(BOOKING_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {flag && <Button variant="secondary" onClick={() => setFlag("")}>{flag === "amount" ? "Below price only" : "Email not sent only"} ✕</Button>}
+        {filtered && <Button variant="ghost" onClick={() => { setQ(""); if (!fixedEventId) setEventId(""); setSessionId(""); setStatus(""); setFlag(""); }}>Clear filters</Button>}
       </div>
 
-      {rows.length === 0 ? <Empty>No bookings match.</Empty> : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, color: C.ink, minWidth: 720 }}>
-            <thead>
-              <tr style={{ textAlign: "left", fontSize: 11, letterSpacing: "0.06em", opacity: 0.6 }}>
-                <th style={{ padding: 8 }}>CUSTOMER</th>{!fixedEventId && <th style={{ padding: 8 }}>EVENT</th>}<th style={{ padding: 8 }}>DATE</th><th style={{ padding: 8 }}>TICKET</th><th style={{ padding: 8 }}>AMOUNT</th><th style={{ padding: 8 }}>STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(b => (
-                <tr key={b.id} onClick={() => setOpen(b)} style={{ borderTop: `1px solid ${C.sand}`, cursor: "pointer" }}>
-                  <td style={{ padding: 8 }}><p style={{ fontWeight: 600, color: C.green }}>{b.name}</p><p style={{ fontSize: 12, opacity: 0.65 }}>{b.email} · {b.phone}</p></td>
-                  {!fixedEventId && <td style={{ padding: 8, maxWidth: 220 }}>{b.eventTitle}</td>}
-                  <td style={{ padding: 8, whiteSpace: "nowrap" }}>{formatDateShort(b.sessionDate)}<p style={{ fontSize: 12, opacity: 0.65 }}>{formatTime12(b.sessionStartTime)}</p></td>
-                  <td style={{ padding: 8 }}>{b.ticketType} × {b.quantity}</td>
-                  <td style={{ padding: 8, fontWeight: 600 }}>{rupees(b.amount)} {amountMismatch(b, eventsById.get(b.eventId)) && <Badge tone="bad">Check amount</Badge>}<p style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>{b.paymentMethod}</p></td>
-                  <td style={{ padding: 8 }}><BookingStatusBadge status={b.status} />{b.status === "confirmed" && !b.confirmationEmailSentAt && <p style={{ fontSize: 11, color: C.clay }}>Email not sent</p>}</td>
+      {rows.length === 0 ? <Empty icon={<Ticket size={22} />}>{filtered ? "No bookings match these filters." : "No bookings yet."}</Empty> : (
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block" style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: C.bg, textAlign: "left", fontSize: 12, color: C.ink }}>
+                  <th style={{ padding: "12px 20px", fontWeight: 500 }}>Customer</th>
+                  {!fixedEventId && <th style={{ padding: "12px 16px", fontWeight: 500 }}>Event</th>}
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>Date</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>Tickets</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>Amount</th>
+                  <th style={{ padding: "12px 20px", fontWeight: 500 }}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map(b => (
+                  <tr key={b.id} className="admin-row" onClick={() => setOpenId(b.id)} style={{ borderTop: `1px solid ${C.sand}`, cursor: "pointer", fontSize: 14 }}>
+                    <td style={{ padding: "14px 20px" }}><p style={{ fontWeight: 500 }}>{b.name}</p><p style={{ fontSize: 13, color: C.ink }}>{b.email}</p></td>
+                    {!fixedEventId && <td style={{ padding: "14px 16px", maxWidth: 240, color: C.ink }}><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b.eventTitle}</span></td>}
+                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>{formatDateShort(b.sessionDate)}<p style={{ fontSize: 13, color: C.ink }}>{formatTime12(b.sessionStartTime)}</p></td>
+                    <td style={{ padding: "14px 16px", color: C.ink }}>{b.quantity} × {b.ticketType}</td>
+                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                      <p style={{ fontWeight: 500 }}>{rupees(b.amount)}</p>
+                      {amountMismatch(b, eventsById.get(b.eventId)) ? <Badge tone="bad">Below price</Badge> : <p style={{ fontSize: 13, color: C.ink }}>{b.paymentMethod === "offline" ? "Offline" : b.paymentMethod === "free" ? "—" : "Razorpay"}</p>}
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <BookingStatusBadge status={b.status} />
+                      {b.status === "confirmed" && !b.confirmationEmailSentAt && b.history?.length ? <p style={{ fontSize: 12, color: C.gold, marginTop: 4 }}>Email not sent</p> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Mobile cards */}
+          <div className="md:hidden">
+            {rows.map(b => (
+              <button key={b.id} onClick={() => setOpenId(b.id)} className="admin-row" style={{ display: "block", width: "100%", textAlign: "left", padding: 16, borderTop: `1px solid ${C.sand}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <p style={{ fontWeight: 600, fontSize: 14 }}>{b.name}</p><p style={{ fontWeight: 600, fontSize: 14 }}>{rupees(b.amount)}</p>
+                </div>
+                <p style={{ fontSize: 13, color: C.ink, margin: "2px 0 8px" }}>{!fixedEventId && `${b.eventTitle} · `}{formatDateShort(b.sessionDate)} · {b.quantity} × {b.ticketType}</p>
+                <BookingStatusBadge status={b.status} />
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
-      {open && <BookingDetailDialog booking={open} event={eventsById.get(open.eventId)} onClose={() => setOpen(null)} onChanged={msg => { setOpen(null); onChanged(msg); }} />}
+      {open && <BookingDetailDialog key={open.id} booking={open} event={eventsById.get(open.eventId)} onClose={() => setOpenId(undefined)} onChanged={msg => onChanged(msg)} />}
       <ManualBookingDialog open={manual} events={events} defaultEventId={fixedEventId} onClose={() => setManual(false)} onCreated={msg => { setManual(false); onChanged(msg); }} />
     </Card>
   );

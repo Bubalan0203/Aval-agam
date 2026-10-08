@@ -1,64 +1,108 @@
 "use client";
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import type { BookingStatus, EventStatus } from "@/lib/firestore";
 
-export const C = { green: "#0F332B", cream: "#FBF4E8", sand: "#EEE2D5", gold: "#C9A25F", clay: "#C8734F", ink: "#2F3328", bg: "#F5EFE4", red: "#a54c2c" };
+/**
+ * Admin tokens (SmartPA-style). Keys kept stable so every admin screen picks up the theme:
+ * green = brand primary, cream = surface, sand = border, ink = secondary text, clay = danger.
+ */
+export const C = {
+  green: "#0F332B", greenSoft: "#F0F5F3",
+  cream: "#FFFFFF", bg: "#F9FAFB",
+  sand: "#EAECF0", border: "#D0D5DD",
+  text: "#101828", ink: "#475467", muted: "#667085",
+  gold: "#B54708", goldSoft: "#FFFAEB",
+  clay: "#D92D20", claySoft: "#FEF3F2",
+  good: "#067647", goodSoft: "#ECFDF3",
+  red: "#B42318",
+};
+
+export const shadow = "0 1px 2px rgba(16,24,40,0.05)";
 
 export const inputStyle = (error?: boolean): React.CSSProperties => ({
-  width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${error ? C.clay : C.sand}`,
-  background: "#fff", fontSize: 14, color: C.ink, outline: "none", boxSizing: "border-box",
+  width: "100%", padding: "10px 14px", borderRadius: 8, border: `1px solid ${error ? "#FDA29B" : C.border}`,
+  background: "#fff", fontSize: 14, color: C.text, outline: "none", boxSizing: "border-box", boxShadow: shadow,
+  fontFamily: "inherit",
 });
 
-export function Card({ title, subtitle, action, children, id }: { title?: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; id?: string }) {
+export function Card({ title, subtitle, action, children, id, padded = true }: { title?: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; id?: string; padded?: boolean }) {
   return (
-    <section id={id} style={{ background: C.cream, borderRadius: 16, padding: 20, boxShadow: "0 1px 8px rgba(15,51,43,0.06)", scrollMarginTop: 90 }}>
+    <section id={id} style={{ background: C.cream, border: `1px solid ${C.sand}`, borderRadius: 12, boxShadow: shadow, scrollMarginTop: 24 }}>
       {(title || action) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-          <div>
-            {title && <h2 style={{ fontFamily: "Playfair Display, serif", fontSize: 18, fontWeight: 700, color: C.green }}>{title}</h2>}
-            {subtitle && <p style={{ fontSize: 12, color: C.ink, opacity: 0.65, marginTop: 4 }}>{subtitle}</p>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "18px 20px", borderBottom: `1px solid ${C.sand}`, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            {title && <h2 style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{title}</h2>}
+            {subtitle && <p style={{ fontSize: 13, color: C.ink, marginTop: 2 }}>{subtitle}</p>}
           </div>
           {action}
         </div>
       )}
-      {children}
+      <div style={{ padding: padded ? 20 : 0 }}>{children}</div>
     </section>
+  );
+}
+
+export function PageHeader({ title, subtitle, actions, back, badge }: { title: string; subtitle?: string; actions?: React.ReactNode; back?: React.ReactNode; badge?: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap", marginBottom: 4 }}>
+      <div style={{ minWidth: 0 }}>
+        {back && <div style={{ marginBottom: 8 }}>{back}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, color: C.text, lineHeight: 1.3 }}>{title}</h1>
+          {badge}
+        </div>
+        {subtitle && <p style={{ fontSize: 14, color: C.ink, marginTop: 4 }}>{subtitle}</p>}
+      </div>
+      {actions && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{actions}</div>}
+    </div>
   );
 }
 
 export function Field({ label, error, hint, children, required }: { label: string; error?: string; hint?: string; children: React.ReactNode; required?: boolean }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: C.ink }}>
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14, fontWeight: 500, color: "#344054" }}>
       <span>{label}{required && <span style={{ color: C.clay }}> *</span>}</span>
       {children}
-      {hint && !error && <span style={{ fontWeight: 400, opacity: 0.6 }}>{hint}</span>}
-      {error && <span role="alert" style={{ color: C.clay, fontWeight: 500 }}>{error}</span>}
+      {hint && !error && <span style={{ fontWeight: 400, fontSize: 13, color: C.muted }}>{hint}</span>}
+      {error && <span role="alert" style={{ color: C.clay, fontWeight: 400, fontSize: 13 }}>{error}</span>}
     </label>
   );
 }
 
-export function Button({ variant = "primary", children, style, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }) {
+export function Button({ variant = "primary", size = "md", children, style, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" | "dangerSolid"; size?: "sm" | "md" }) {
   const v = {
-    primary:   { background: C.green, color: C.cream, border: "none" },
-    secondary: { background: "#fff", color: C.green, border: `1.5px solid ${C.sand}` },
-    danger:    { background: "rgba(200,115,79,0.12)", color: C.clay, border: "none" },
-    ghost:     { background: "transparent", color: C.clay, border: "none" },
+    primary:     { background: C.green, color: "#fff", border: `1px solid ${C.green}` },
+    secondary:   { background: "#fff", color: "#344054", border: `1px solid ${C.border}` },
+    danger:      { background: "#fff", color: C.red, border: "1px solid #FDA29B" },
+    dangerSolid: { background: C.clay, color: "#fff", border: `1px solid ${C.clay}` },
+    ghost:       { background: "transparent", color: C.ink, border: "1px solid transparent" },
   }[variant];
   return (
-    <button type="button" {...rest} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 16px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: rest.disabled ? "not-allowed" : "pointer", opacity: rest.disabled ? 0.5 : 1, whiteSpace: "nowrap", ...v, ...style }}>
+    <button type="button" {...rest} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: size === "sm" ? "6px 10px" : "9px 14px", borderRadius: 8, fontSize: size === "sm" ? 13 : 14, fontWeight: 600, cursor: rest.disabled ? "not-allowed" : "pointer", opacity: rest.disabled ? 0.5 : 1, whiteSpace: "nowrap", boxShadow: variant === "ghost" ? "none" : shadow, fontFamily: "inherit", ...v, ...style }}>
       {children}
     </button>
   );
 }
 
-export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "good" | "warn" | "bad" | "gold"; children: React.ReactNode }) {
-  const t = { neutral: [C.sand, C.green], good: ["#E2EEE8", C.green], warn: ["#FDE8D5", "#8B3516"], bad: ["#F5D9D0", C.red], gold: ["rgba(201,162,95,0.18)", "#8a6a2f"] }[tone];
-  return <span style={{ display: "inline-block", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, background: t[0], color: t[1], whiteSpace: "nowrap" }}>{children}</span>;
+type Tone = "neutral" | "good" | "warn" | "bad" | "gold" | "brand";
+const TONES: Record<Tone, [string, string, string]> = {
+  neutral: ["#F9FAFB", "#344054", "#EAECF0"], good: [C.goodSoft, C.good, "#ABEFC6"], warn: [C.goldSoft, C.gold, "#FEDF89"],
+  bad: [C.claySoft, C.red, "#FECDCA"], gold: [C.goldSoft, C.gold, "#FEDF89"], brand: [C.greenSoft, C.green, "#C9DCD5"],
+};
+
+export function Badge({ tone = "neutral", dot, children }: { tone?: Tone; dot?: boolean; children: React.ReactNode }) {
+  const [bg, fg, bd] = TONES[tone];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 500, background: bg, color: fg, border: `1px solid ${bd}`, whiteSpace: "nowrap" }}>
+      {dot && <span style={{ width: 6, height: 6, borderRadius: 999, background: fg }} />}{children}
+    </span>
+  );
 }
 
 export function EventStatusBadge({ status }: { status: EventStatus }) {
-  return <Badge tone={status === "published" ? "good" : status === "draft" ? "gold" : "neutral"}>{status === "published" ? "Published" : status === "draft" ? "Draft" : "Archived"}</Badge>;
+  return <Badge dot tone={status === "published" ? "good" : status === "draft" ? "warn" : "neutral"}>{status === "published" ? "Published" : status === "draft" ? "Draft" : "Archived"}</Badge>;
 }
 
 export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
@@ -66,7 +110,17 @@ export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
 };
 
 export function BookingStatusBadge({ status }: { status: BookingStatus }) {
-  return <Badge tone={status === "confirmed" ? "good" : status === "refund_required" ? "warn" : "neutral"}>{BOOKING_STATUS_LABEL[status]}</Badge>;
+  return <Badge dot tone={status === "confirmed" ? "good" : status === "refund_required" ? "bad" : "neutral"}>{BOOKING_STATUS_LABEL[status]}</Badge>;
+}
+
+export function StatCard({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: "bad" }) {
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.sand}`, borderRadius: 12, padding: 20, boxShadow: shadow }}>
+      <p style={{ fontSize: 14, color: C.ink, fontWeight: 500 }}>{label}</p>
+      <p style={{ fontSize: 28, fontWeight: 600, color: tone === "bad" ? C.red : C.text, marginTop: 6, lineHeight: 1.2 }}>{value}</p>
+      {hint && <p style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{hint}</p>}
+    </div>
+  );
 }
 
 export type ToastMsg = { type: "success" | "error"; msg: string } | null;
@@ -75,17 +129,84 @@ export function useToast() {
   const [toast, setToast] = useState<ToastMsg>(null);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
+    const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
   const node = toast && (
-    <div role="status" style={{ position: "fixed", bottom: 24, right: 24, left: 24, marginLeft: "auto", maxWidth: 420, zIndex: 200, display: "flex", gap: 10, alignItems: "center", padding: "12px 16px", borderRadius: 12, background: toast.type === "success" ? C.green : C.clay, color: "#fff", fontSize: 13, boxShadow: "0 8px 24px rgba(0,0,0,0.18)" }}>
-      {toast.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />} {toast.msg}
+    <div role="status" style={{ position: "fixed", bottom: 24, right: 24, left: 24, marginLeft: "auto", maxWidth: 420, zIndex: 300, display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px", borderRadius: 12, background: "#fff", border: `1px solid ${C.sand}`, color: C.text, fontSize: 14, boxShadow: "0 12px 16px -4px rgba(16,24,40,.08), 0 4px 6px -2px rgba(16,24,40,.03)" }}>
+      {toast.type === "success" ? <CheckCircle2 size={20} color={C.good} /> : <AlertCircle size={20} color={C.clay} />}
+      <span style={{ flex: 1 }}>{toast.msg}</span>
+      <button aria-label="Dismiss" onClick={() => setToast(null)} style={{ color: C.muted }}><X size={16} /></button>
     </div>
   );
   return { setToast, toastNode: node };
 }
 
-export function Empty({ children }: { children: React.ReactNode }) {
-  return <p style={{ padding: "28px 12px", textAlign: "center", fontSize: 14, color: C.ink, opacity: 0.55 }}>{children}</p>;
+export function Empty({ children, icon, action }: { children: React.ReactNode; icon?: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div style={{ padding: "40px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      {icon && <div style={{ width: 48, height: 48, borderRadius: 999, background: C.greenSoft, display: "flex", alignItems: "center", justifyContent: "center", color: C.green }}>{icon}</div>}
+      <p style={{ fontSize: 14, color: C.ink, maxWidth: 360 }}>{children}</p>
+      {action}
+    </div>
+  );
+}
+
+export function Skeleton({ h = 16, w = "100%", style }: { h?: number; w?: number | string; style?: React.CSSProperties }) {
+  return <div className="admin-skeleton" style={{ height: h, width: w, ...style }} />;
+}
+
+export function PageSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Skeleton h={28} w={220} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} h={96} />)}</div>
+      <Skeleton h={320} />
+    </div>
+  );
+}
+
+/** Right-side slide-over panel (full screen on phones). */
+export function Drawer({ open, onClose, title, subtitle, children, footer, width = 520 }: { open: boolean; onClose: () => void; title: string; subtitle?: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; width?: number }) {
+  return (
+    <Dialog.Root open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,.45)", zIndex: 120 }} />
+        <Dialog.Content className="admin-root admin-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 121, width: `min(${width}px, 100vw)`, background: "#fff", display: "flex", flexDirection: "column", boxShadow: "-12px 0 24px rgba(16,24,40,.12)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "20px 24px", borderBottom: `1px solid ${C.sand}` }}>
+            <div style={{ minWidth: 0 }}>
+              <Dialog.Title style={{ fontSize: 18, fontWeight: 600, color: C.text }}>{title}</Dialog.Title>
+              <Dialog.Description style={{ fontSize: 14, color: C.ink, marginTop: 2 }}>{subtitle ?? ""}</Dialog.Description>
+            </div>
+            <Dialog.Close aria-label="Close" style={{ color: C.muted, padding: 4 }}><X size={20} /></Dialog.Close>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>{children}</div>
+          {footer && <div style={{ padding: "16px 24px", borderTop: `1px solid ${C.sand}`, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>{footer}</div>}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/** Centered confirm dialog with optional reason input. */
+export function ConfirmDialog({ open, title, message, confirmLabel, danger, busy, onConfirm, onCancel, children, confirmDisabled }: {
+  open: boolean; title: string; message?: React.ReactNode; confirmLabel: string; danger?: boolean; busy?: boolean;
+  onConfirm: () => void; onCancel: () => void; children?: React.ReactNode; confirmDisabled?: boolean;
+}) {
+  return (
+    <Dialog.Root open={open} onOpenChange={v => { if (!v && !busy) onCancel(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay style={{ position: "fixed", inset: 0, background: "rgba(16,24,40,.45)", zIndex: 130 }} />
+        <Dialog.Content className="admin-root" style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 131, width: "min(460px, calc(100vw - 24px))", background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 20px 24px -4px rgba(16,24,40,.08)" }}>
+          <Dialog.Title style={{ fontSize: 18, fontWeight: 600, color: C.text }}>{title}</Dialog.Title>
+          <Dialog.Description asChild><div style={{ fontSize: 14, color: C.ink, marginTop: 8, lineHeight: 1.6 }}>{message}</div></Dialog.Description>
+          {children && <div style={{ marginTop: 16 }}>{children}</div>}
+          <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+            <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={onCancel}>Cancel</Button>
+            <Button variant={danger ? "dangerSolid" : "primary"} style={{ flex: 1 }} disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? "Working…" : confirmLabel}</Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
 }

@@ -74,3 +74,17 @@ body {
 .event-media-gallery button:focus-visible { outline: 3px solid #c9a25f; outline-offset: 3px; }
 @media (min-width: 768px) { .event-media-gallery--both { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .event-photo-grid img { transition: none; } }
+
+/* ── Admin design system (SmartPA-style: neutral surfaces, 8px radius, quiet borders) ── */
+.admin-root { font-family: Inter, system-ui, sans-serif; color: #101828; background: #F9FAFB; -webkit-font-smoothing: antialiased; }
+.admin-root h1, .admin-root h2, .admin-root h3 { font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; }
+.admin-root input:focus, .admin-root select:focus, .admin-root textarea:focus { border-color: #0F332B !important; box-shadow: 0 0 0 4px rgba(15,51,43,0.10); }
+.admin-root button:focus-visible, .admin-root a:focus-visible { outline: 2px solid #0F332B; outline-offset: 2px; }
+.admin-row:hover { background: #F9FAFB; }
+.admin-nav-link { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #344054; }
+.admin-nav-link:hover { background: #F2F4F7; }
+.admin-nav-link[data-active="true"] { background: #F0F5F3; color: #0F332B; font-weight: 600; }
+@keyframes admin-pulse { 50% { opacity: .5; } }
+.admin-skeleton { background: #EAECF0; border-radius: 6px; animation: admin-pulse 1.4s ease-in-out infinite; }
+@keyframes admin-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.admin-drawer { animation: admin-slide .2s ease-out; }

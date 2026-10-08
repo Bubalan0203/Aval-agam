@@ -1,14 +1,13 @@
 "use client";
 import { Fragment, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { Copy, Mail, Phone } from "lucide-react";
 import {
   addBookingNote, cancelBooking, createBooking, markConfirmationEmailSent, markRefunded,
   type Booking, type Event,
 } from "@/lib/firestore";
 import { sendConfirmationEmail } from "@/lib/email";
-import { amountMismatch, downloadCsv, formatDateShort, formatTime12, maxQuantity, rupees, upcomingSessions } from "@/lib/booking-logic";
-import { BookingStatusBadge, BOOKING_STATUS_LABEL, Badge, Button, C, Field, inputStyle } from "./ui";
+import { amountMismatch, downloadCsv, formatDateLong, formatDateShort, formatTime12, maxQuantity, rupees, ticketRemaining, upcomingSessions } from "@/lib/booking-logic";
+import { BookingStatusBadge, BOOKING_STATUS_LABEL, Badge, Button, C, ConfirmDialog, Drawer, Field, inputStyle } from "./ui";
 
 export function exportBookingsCsv(filename: string, bookings: Booking[]) {
   downloadCsv(filename, [
@@ -17,27 +16,11 @@ export function exportBookingsCsv(filename: string, bookings: Booking[]) {
   ]);
 }
 
-function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <Dialog.Root open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay style={{ position: "fixed", inset: 0, background: "rgba(15,51,43,.5)", zIndex: 120 }} />
-        <Dialog.Content style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 121, width: `min(${wide ? 640 : 480}px, calc(100vw - 24px))`, maxHeight: "90vh", overflowY: "auto", background: C.cream, borderRadius: 18, padding: 22, fontFamily: "Poppins, sans-serif" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <Dialog.Title style={{ fontSize: 18, fontWeight: 700, color: C.green }}>{title}</Dialog.Title>
-            <Dialog.Close aria-label="Close"><X size={18} /></Dialog.Close>
-          </div>
-          <Dialog.Description className="sr-only">{title}</Dialog.Description>
-          {children}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
+const PAYMENT_LABEL: Record<string, string> = { razorpay: "Razorpay", free: "Free", offline: "Offline / cash" };
 
-/** Row-level actions and history for one booking. */
+/** Slide-over with a booking's details, history and actions. */
 export function BookingDetailDialog({ booking, event, onClose, onChanged }: { booking: Booking | null; event?: Event | null; onClose: () => void; onChanged: (msg: string) => void }) {
-  const [mode, setMode] = useState<"view" | "cancel" | "refund">("view");
+  const [confirm, setConfirm] = useState<"cancel" | "refund" | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,7 +29,7 @@ export function BookingDetailDialog({ booking, event, onClose, onChanged }: { bo
 
   async function act(fn: () => Promise<void>, msg: string) {
     setBusy(true); setError("");
-    try { await fn(); onChanged(msg); setMode("view"); setNote(""); }
+    try { await fn(); setConfirm(null); setNote(""); onChanged(msg); }
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -55,64 +38,73 @@ export function BookingDetailDialog({ booking, event, onClose, onChanged }: { bo
     await sendConfirmationEmail({ bookingId: b.id!, name: b.name, email: b.email, phone: b.phone, eventTitle: b.eventTitle, date: b.sessionDate, startTime: b.sessionStartTime, endTime: b.sessionEndTime, venue: b.venue ?? event?.location ?? "", ticketType: b.ticketType, quantity: b.quantity, amount: b.amount });
     if (!b.confirmationEmailSentAt) await markConfirmationEmailSent(b.id!);
     await addBookingNote(b.id!, "email_resent");
-  }, "Confirmation email sent.");
+  }, `Confirmation sent to ${b.email}.`);
 
-  const rows: [string, React.ReactNode][] = [
-    ["Booking ID", <code key="id" style={{ fontSize: 12 }}>{b.id}</code>],
-    ["Event", b.eventTitle],
-    ["Date", `${formatDateShort(b.sessionDate)} · ${formatTime12(b.sessionStartTime)}–${formatTime12(b.sessionEndTime)}`],
-    ["Name", b.name], ["Email", <a key="e" href={`mailto:${b.email}`}>{b.email}</a>], ["Phone", <a key="p" href={`tel:${b.phone}`}>{b.phone}</a>],
-    ["Ticket", `${b.ticketType} × ${b.quantity}`],
-    ["Amount", <span key="a">{rupees(b.amount)} {amountMismatch(b, event) && <Badge tone="bad">Below ticket price</Badge>}</span>],
-    ["Payment", `${b.paymentMethod}${b.paymentId ? ` · ${b.paymentId}` : ""}`],
-    ["Email sent", b.confirmationEmailSentAt ? new Date(b.confirmationEmailSentAt).toLocaleString("en-IN") : "Not sent"],
-    ...(b.failureReason ? [["Problem", b.failureReason] as [string, React.ReactNode]] : []),
-    ...(b.cancellationReason ? [["Cancel reason", b.cancellationReason] as [string, React.ReactNode]] : []),
-  ];
+  const section = (title: string, rows: [string, React.ReactNode][]) => (
+    <div style={{ marginBottom: 24 }}>
+      <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>{title}</p>
+      <dl style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "10px 12px", fontSize: 14 }}>
+        {rows.map(([k, v]) => <Fragment key={k}><dt style={{ color: C.ink }}>{k}</dt><dd style={{ fontWeight: 500, color: C.text, wordBreak: "break-word" }}>{v}</dd></Fragment>)}
+      </dl>
+    </div>
+  );
 
   return (
-    <Modal open onClose={onClose} title="Booking" wide>
-      <div style={{ marginBottom: 12 }}><BookingStatusBadge status={b.status} /></div>
-      <dl style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px 12px", fontSize: 13, color: C.ink }}>
-        {rows.map(([k, v]) => <Fragment key={k}><dt style={{ opacity: 0.6 }}>{k}</dt><dd style={{ fontWeight: 500, wordBreak: "break-word" }}>{v}</dd></Fragment>)}
-      </dl>
-
-      {!!b.history?.length && (
-        <div style={{ marginTop: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>History</p>
-          <ul style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-            {b.history.map((h, i) => <li key={i}>{new Date(h.at).toLocaleString("en-IN")} · {h.action.replace(/_/g, " ")} · {h.by}{h.note ? ` — ${h.note}` : ""}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {mode !== "view" && (
-        <div style={{ marginTop: 16 }}>
-          <Field label={mode === "cancel" ? "Reason for cancelling" : "Refund reference / note"} required={mode === "cancel"}>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} style={inputStyle()} />
-          </Field>
-          {mode === "cancel" && <p style={{ fontSize: 12, marginTop: 6 }}>Seats go back on sale. {b.amount > 0 ? "The booking moves to Refund needed." : ""}</p>}
-        </div>
-      )}
-      {error && <p role="alert" style={{ color: C.clay, fontSize: 12, marginTop: 10 }}>{error}</p>}
-
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 18 }}>
-        {mode === "view" ? (
-          <>
-            {b.status === "confirmed" && <Button variant="secondary" disabled={busy} onClick={resend}>{busy ? "Sending…" : "Resend email"}</Button>}
-            {b.status === "confirmed" && <Button variant="danger" onClick={() => setMode("cancel")}>Cancel booking</Button>}
-            {b.status === "refund_required" && <Button onClick={() => setMode("refund")}>Mark refunded</Button>}
-          </>
-        ) : (
-          <>
-            <Button variant="secondary" disabled={busy} onClick={() => { setMode("view"); setNote(""); }}>Back</Button>
-            {mode === "cancel"
-              ? <Button variant="danger" disabled={busy || !note.trim()} onClick={() => act(() => cancelBooking(b.id!, note), "Booking cancelled.")}>{busy ? "Working…" : "Confirm cancel"}</Button>
-              : <Button disabled={busy} onClick={() => act(() => markRefunded(b.id!, note), "Marked as refunded.")}>{busy ? "Working…" : "Confirm refund"}</Button>}
-          </>
+    <>
+      <Drawer open onClose={onClose} title={b.name} subtitle={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><BookingStatusBadge status={b.status} />{amountMismatch(b, event) && <Badge tone="bad">Paid below price</Badge>}</span>}
+        footer={<>
+          {b.status === "confirmed" && <Button variant="danger" disabled={busy} onClick={() => setConfirm("cancel")}>Cancel booking</Button>}
+          {b.status === "confirmed" && <Button variant="secondary" disabled={busy} onClick={resend}><Mail size={16} /> {busy ? "Sending…" : b.confirmationEmailSentAt ? "Resend email" : "Send email"}</Button>}
+          {b.status === "refund_required" && <Button disabled={busy} onClick={() => setConfirm("refund")}>Mark as refunded</Button>}
+        </>}>
+        {b.failureReason && <p style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14, marginBottom: 20 }}>{b.failureReason}</p>}
+        {error && <p role="alert" style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14, marginBottom: 20 }}>{error}</p>}
+        {section("Customer", [
+          ["Email", <a key="e" href={`mailto:${b.email}`} style={{ color: C.green }}>{b.email}</a>],
+          ["Phone", b.phone ? <span key="p" style={{ display: "inline-flex", gap: 10 }}><a href={`tel:${b.phone}`} style={{ color: C.green }}>{b.phone}</a><a href={`https://wa.me/${b.phone.replace(/\D/g, "").replace(/^(?=\d{10}$)/, "91")}`} target="_blank" rel="noopener noreferrer" style={{ color: C.good, fontSize: 13 }}><Phone size={13} style={{ display: "inline" }} /> WhatsApp</a></span> : "—"],
+        ])}
+        {section("Booking", [
+          ["Event", b.eventTitle],
+          ["Date", `${formatDateLong(b.sessionDate)}`],
+          ["Time", `${formatTime12(b.sessionStartTime)} – ${formatTime12(b.sessionEndTime)} IST`],
+          ["Tickets", `${b.quantity} × ${b.ticketType}`],
+          ["Booked", b.bookedAt ? b.bookedAt.toDate().toLocaleString("en-IN") : "—"],
+          ["Booking ID", <span key="id" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><code style={{ fontSize: 13 }}>{b.id}</code><button aria-label="Copy booking ID" onClick={() => navigator.clipboard?.writeText(b.id!)} style={{ color: C.muted }}><Copy size={14} /></button></span>],
+        ])}
+        {section("Payment", [
+          ["Amount", rupees(b.amount)],
+          ["Method", PAYMENT_LABEL[b.paymentMethod] ?? b.paymentMethod],
+          ...(b.paymentId ? [["Payment ID", <code key="pid" style={{ fontSize: 13 }}>{b.paymentId}</code>] as [string, React.ReactNode]] : []),
+          ["Confirmation", b.confirmationEmailSentAt ? `Sent ${new Date(b.confirmationEmailSentAt).toLocaleString("en-IN")}` : <span key="ns" style={{ color: C.gold }}>Not sent</span>],
+          ...(b.cancellationReason ? [["Cancel reason", b.cancellationReason] as [string, React.ReactNode]] : []),
+        ])}
+        {!!b.history?.length && (
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>Activity</p>
+            <ol style={{ display: "flex", flexDirection: "column", gap: 12, borderLeft: `2px solid ${C.sand}`, paddingLeft: 16 }}>
+              {[...b.history].reverse().map((h, i) => (
+                <li key={i} style={{ fontSize: 14 }}>
+                  <p style={{ fontWeight: 500, textTransform: "capitalize" }}>{h.action.replace(/_/g, " ")}</p>
+                  <p style={{ fontSize: 13, color: C.ink }}>{new Date(h.at).toLocaleString("en-IN")} · {h.by}</p>
+                  {h.note && <p style={{ fontSize: 13, color: C.text, marginTop: 2 }}>“{h.note}”</p>}
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
-      </div>
-    </Modal>
+      </Drawer>
+
+      <ConfirmDialog open={confirm === "cancel"} danger title="Cancel this booking?" busy={busy} confirmLabel="Cancel booking" confirmDisabled={!note.trim()}
+        message={<>{b.quantity} seat{b.quantity === 1 ? "" : "s"} will go back on sale. {b.amount > 0 ? <>The booking moves to <strong>Refund needed</strong> — refund {rupees(b.amount)} in Razorpay, then mark it refunded.</> : null}</>}
+        onCancel={() => { setConfirm(null); setNote(""); }} onConfirm={() => act(() => cancelBooking(b.id!, note), "Booking cancelled.")}>
+        <Field label="Reason" required><textarea rows={2} value={note} onChange={e => setNote(e.target.value)} style={inputStyle()} placeholder="e.g. Customer asked to cancel" /></Field>
+      </ConfirmDialog>
+      <ConfirmDialog open={confirm === "refund"} title="Mark as refunded?" busy={busy} confirmLabel="Mark refunded"
+        message={<>Confirm you have refunded {rupees(b.amount)} to {b.name} in Razorpay.</>}
+        onCancel={() => { setConfirm(null); setNote(""); }} onConfirm={() => act(() => markRefunded(b.id!, note), "Marked as refunded.")}>
+        <Field label="Refund reference" hint="Optional, e.g. Razorpay refund ID"><input value={note} onChange={e => setNote(e.target.value)} style={inputStyle()} /></Field>
+      </ConfirmDialog>
+    </>
   );
 }
 
@@ -121,59 +113,76 @@ export function ManualBookingDialog({ open, events, defaultEventId, onClose, onC
   const bookable = events.filter(e => e.status !== "archived" && upcomingSessions(e).length);
   const [f, setF] = useState({ eventId: defaultEventId ?? "", sessionId: "", ticketTypeId: "", quantity: "1", name: "", email: "", phone: "", amount: "", sendEmail: true });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const event = bookable.find(e => e.id === f.eventId);
   const sessions = event ? upcomingSessions(event) : [];
   const session = sessions.find(s => s.id === f.sessionId);
   const ticket = event?.ticketTypes.find(t => t.id === f.ticketTypeId);
   const max = ticket && session ? maxQuantity(ticket, session) : 10;
+  const qty = Number(f.quantity) || 0;
 
   async function submit() {
-    setError("");
-    if (!event || !session || !ticket) return setError("Choose event, date and ticket.");
-    if (!f.name.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) return setError("Enter name and a valid email.");
-    const quantity = Number(f.quantity);
-    const amount = f.amount === "" ? ticket.price * quantity : Number(f.amount);
+    const e: Record<string, string> = {};
+    if (!event) e.eventId = "Choose an event";
+    if (!session) e.sessionId = "Choose a date";
+    if (!ticket) e.ticketTypeId = "Choose a ticket";
+    else if (session && (qty < 1 || qty > max)) e.quantity = max ? `Between 1 and ${max}` : "Sold out";
+    if (!f.name.trim()) e.name = "Enter a name";
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) e.email = "Enter a valid email";
+    if (f.amount !== "" && (!Number.isFinite(Number(f.amount)) || Number(f.amount) < 0)) e.amount = "Enter 0 or more";
+    setErrors(e);
+    if (Object.keys(e).length || !event || !session || !ticket) return;
+    const amount = f.amount === "" ? ticket.price * qty : Number(f.amount);
     setBusy(true);
     try {
-      const { id, booking } = await createBooking({ eventId: event.id, sessionId: session.id, ticketTypeId: ticket.id, quantity, name: f.name, email: f.email, phone: f.phone, paymentMethod: "offline", amount, source: "admin" });
+      const { id, booking } = await createBooking({ eventId: event.id, sessionId: session.id, ticketTypeId: ticket.id, quantity: qty, name: f.name, email: f.email, phone: f.phone, paymentMethod: "offline", amount, source: "admin" });
+      let emailNote = "";
       if (f.sendEmail) {
-        await sendConfirmationEmail({ bookingId: id, name: booking.name, email: booking.email, phone: booking.phone, eventTitle: event.title, date: session.date, startTime: session.startTime, endTime: session.endTime, venue: event.location, ticketType: ticket.name, quantity, amount })
-          .then(() => markConfirmationEmailSent(id)).catch(() => {});
+        try {
+          await sendConfirmationEmail({ bookingId: id, name: booking.name, email: booking.email, phone: booking.phone, eventTitle: event.title, date: session.date, startTime: session.startTime, endTime: session.endTime, venue: event.location, ticketType: ticket.name, quantity: qty, amount });
+          await markConfirmationEmailSent(id);
+        } catch { emailNote = " Email couldn't be sent — resend it from the booking."; }
       }
-      onCreated("Booking added.");
+      onCreated(`Booking added for ${booking.name}.${emailNote}`);
       setF(p => ({ ...p, name: "", email: "", phone: "", amount: "", quantity: "1" }));
-    } catch (e) { setError((e as Error).message); }
+    } catch (err) { setErrors({ form: (err as Error).message }); }
     finally { setBusy(false); }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add booking manually" wide>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2"><Field label="Event" required>
-          <select value={f.eventId} onChange={e => setF({ ...f, eventId: e.target.value, sessionId: "", ticketTypeId: "" })} style={inputStyle()}>
-            <option value="">Choose…</option>{bookable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-          </select></Field></div>
-        <Field label="Date" required>
-          <select value={f.sessionId} onChange={e => setF({ ...f, sessionId: e.target.value })} style={inputStyle()} disabled={!event}>
-            <option value="">Choose…</option>{sessions.map(s => <option key={s.id} value={s.id}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}</option>)}
-          </select></Field>
-        <Field label="Ticket" required>
-          <select value={f.ticketTypeId} onChange={e => setF({ ...f, ticketTypeId: e.target.value })} style={inputStyle()} disabled={!event}>
-            <option value="">Choose…</option>{event?.ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name} · {rupees(t.price)}{session ? ` · ${maxQuantity(t, session)} left` : ""}</option>)}
-          </select></Field>
-        <Field label="Quantity" required><input type="number" min={1} max={max} value={f.quantity} onChange={e => setF({ ...f, quantity: e.target.value })} style={inputStyle()} /></Field>
-        <Field label="Amount received (₹)" hint={ticket ? `Default ${rupees(ticket.price * Number(f.quantity || 0))}` : undefined}><input type="number" min={0} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} style={inputStyle()} /></Field>
-        <Field label="Name" required><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={inputStyle()} /></Field>
-        <Field label="Email" required><input type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} style={inputStyle()} /></Field>
-        <Field label="Phone"><input type="tel" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} style={inputStyle()} /></Field>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, alignSelf: "end" }}><input type="checkbox" checked={f.sendEmail} onChange={e => setF({ ...f, sendEmail: e.target.checked })} /> Send confirmation email</label>
-      </div>
-      {error && <p role="alert" style={{ color: C.clay, fontSize: 12, marginTop: 10 }}>{error}</p>}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-        <Button variant="secondary" onClick={onClose}>Close</Button>
-        <Button disabled={busy} onClick={submit}>{busy ? "Saving…" : "Add booking"}</Button>
-      </div>
-    </Modal>
+    <Drawer open={open} onClose={onClose} title="Add a booking" subtitle="For cash, bank transfer or complimentary seats. Seats are taken right away."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button disabled={busy} onClick={submit}>{busy ? "Saving…" : "Add booking"}</Button></>}>
+      {bookable.length === 0 ? <p style={{ fontSize: 14, color: C.ink }}>No events have upcoming dates to book.</p> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {errors.form && <p role="alert" style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14 }}>{errors.form}</p>}
+          <Field label="Event" required error={errors.eventId}>
+            <select value={f.eventId} onChange={e => setF({ ...f, eventId: e.target.value, sessionId: "", ticketTypeId: "" })} style={inputStyle(!!errors.eventId)}>
+              <option value="">Choose…</option>{bookable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+            </select>
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Date" required error={errors.sessionId}>
+              <select value={f.sessionId} onChange={e => setF({ ...f, sessionId: e.target.value })} style={inputStyle(!!errors.sessionId)} disabled={!event}>
+                <option value="">Choose…</option>{sessions.map(s => <option key={s.id} value={s.id}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}</option>)}
+              </select>
+            </Field>
+            <Field label="Ticket" required error={errors.ticketTypeId}>
+              <select value={f.ticketTypeId} onChange={e => setF({ ...f, ticketTypeId: e.target.value })} style={inputStyle(!!errors.ticketTypeId)} disabled={!event}>
+                <option value="">Choose…</option>
+                {event?.ticketTypes.map(t => { const left = session ? ticketRemaining(t, session) : null; return <option key={t.id} value={t.id} disabled={left === 0}>{t.name} · {rupees(t.price)}{left !== null ? ` · ${left ? `${left} left` : "sold out"}` : ""}</option>; })}
+              </select>
+            </Field>
+            <Field label="Quantity" required error={errors.quantity} hint={ticket && session ? `Up to ${max}` : undefined}><input type="number" min={1} max={max} value={f.quantity} onChange={e => setF({ ...f, quantity: e.target.value })} style={inputStyle(!!errors.quantity)} /></Field>
+            <Field label="Amount received (₹)" error={errors.amount} hint={ticket ? `Leave blank for ${rupees(ticket.price * Math.max(qty, 0))}` : "Leave blank to use the ticket price"}><input type="number" min={0} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} style={inputStyle(!!errors.amount)} /></Field>
+          </div>
+          <Field label="Name" required error={errors.name}><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={inputStyle(!!errors.name)} /></Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Email" required error={errors.email}><input type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} style={inputStyle(!!errors.email)} /></Field>
+            <Field label="Phone"><input type="tel" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} style={inputStyle()} /></Field>
+          </div>
+          <label style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14 }}><input type="checkbox" checked={f.sendEmail} onChange={e => setF({ ...f, sendEmail: e.target.checked })} style={{ width: 16, height: 16, accentColor: C.green }} /> Send confirmation email</label>
+        </div>
+      )}
+    </Drawer>
   );
 }

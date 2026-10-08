@@ -5,7 +5,35 @@ import { C } from "./ui";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
-const MAX_GALLERY = 20;
+const MAX_GALLERY = 60;
+const MAX_INPUT_BYTES = 40 * 1024 * 1024; // phone photos are shrunk below 8 MB before upload
+const MAX_EDGE = 2400;
+const CONCURRENCY = 3;
+
+/** Downscales large photos in the browser so big phone images upload fast and stay under the 8 MB limit. */
+async function prepareFile(file: File): Promise<File> {
+  if (file.type === "image/gif" || (file.size <= 2 * 1024 * 1024)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, "image/jpeg", 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch { return file; }
+}
+
+// Simple shared queue so 30 photos don't all upload at once.
+let active = 0;
+const waiting: (() => void)[] = [];
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= CONCURRENCY) await new Promise<void>(r => waiting.push(r));
+  active++;
+  try { return await fn(); } finally { active--; waiting.shift()?.(); }
+}
 
 type Job = { key: string; file: File; target: "cover" | "gallery"; progress: number; error?: string; preview: string };
 
@@ -28,7 +56,7 @@ function uploadFile(file: File, folder: string, onProgress: (p: number) => void)
 
 function checkFile(f: File): string | null {
   if (!ACCEPT.includes(f.type)) return "Use JPG, PNG, WebP, GIF or AVIF.";
-  if (f.size > MAX_BYTES) return `Too large (${(f.size / 1048576).toFixed(1)} MB). Max 8 MB.`;
+  if (f.size > MAX_INPUT_BYTES) return `Too large (${(f.size / 1048576).toFixed(1)} MB). Max 40 MB.`;
   return null;
 }
 
@@ -59,7 +87,11 @@ export function ImageUploader({ cover, gallery, onChange, onBusyChange, error }:
 
   function run(job: Job) {
     setJobs(j => [...j.filter(x => x.key !== job.key), { ...job, progress: 0, error: undefined }]);
-    uploadFile(job.file, job.target === "cover" ? "Avalagam/hero" : "Avalagam/gallery", p => setJobs(j => j.map(x => x.key === job.key ? { ...x, progress: p } : x)))
+    withSlot(async () => {
+      const file = await prepareFile(job.file);
+      if (file.size > MAX_BYTES) throw new Error("Still over 8 MB after resizing. Try a smaller photo.");
+      return uploadFile(file, job.target === "cover" ? "Avalagam/hero" : "Avalagam/gallery", p => setJobs(j => j.map(x => x.key === job.key ? { ...x, progress: p } : x)));
+    })
       .then(url => {
         const cur = latest.current;
         const next = job.target === "cover" ? { ...cur, cover: url } : { ...cur, gallery: [...cur.gallery, url] };
@@ -109,7 +141,7 @@ export function ImageUploader({ cover, gallery, onChange, onBusyChange, error }:
 
       {/* Gallery */}
       <div>
-        <p style={{ fontSize: 12, fontWeight: 600, color: C.ink, marginBottom: 8 }}>Gallery <span style={{ fontWeight: 400, opacity: 0.6 }}>— {gallery.length}/{MAX_GALLERY}. Drag to reorder. Star an image to make it the cover.</span></p>
+        <p style={{ fontSize: 12, fontWeight: 600, color: C.ink, marginBottom: 8 }}>Gallery <span style={{ fontWeight: 400, opacity: 0.6 }}>— {gallery.length}/{MAX_GALLERY}{jobs.some(j => j.target === "gallery" && !j.error) ? ` · uploading ${jobs.filter(j => j.target === "gallery" && !j.error).length}…` : ""}. Drag to reorder. Star an image to make it the cover.</span></p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
           {gallery.map((url, i) => (
             <div key={url + i} draggable onDragStart={() => setDragIdx(i)} onDragOver={e => e.preventDefault()} onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}
@@ -177,7 +209,7 @@ function DropZone({ onFiles, label, multiple, compact, error }: { onFiles: (f: F
       style={{ aspectRatio: compact ? "1/1" : "16/9", maxWidth: compact ? undefined : 560, border: `2px dashed ${error ? C.clay : over ? C.green : C.gold}`, borderRadius: 12, background: over ? "#fff" : "rgba(255,255,255,0.5)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: C.ink, fontSize: 13, padding: 12, textAlign: "center" }}>
       {compact ? <ImagePlus size={22} color={C.gold} /> : <Upload size={26} color={C.gold} />}
       <span>{label}</span>
-      {!compact && <span style={{ fontSize: 11, opacity: 0.55 }}>JPG, PNG, WebP · up to 8 MB</span>}
+      {!compact && <span style={{ fontSize: 11, opacity: 0.55 }}>JPG, PNG, WebP · large photos are resized automatically</span>}
       <input ref={ref} type="file" accept={ACCEPT.join(",")} multiple={multiple} hidden onChange={e => { onFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
     </div>
   );
