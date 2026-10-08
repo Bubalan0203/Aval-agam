@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-    const folder = (formData.get("folder") as string) || "chapterone-events";
+    const folder = (formData.get("folder") as string) || "Avalagam";
 
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
     if (!file.type.startsWith("image/")) {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Image must be under 8MB" }, { status: 400 });
     }
     // Only allow uploads into this app's folders
-    if (!folder.startsWith("chapterone")) {
+    if (folder !== "Avalagam" && !folder.startsWith("Avalagam/")) {
       return NextResponse.json({ error: "Invalid folder" }, { status: 400 });
     }
 

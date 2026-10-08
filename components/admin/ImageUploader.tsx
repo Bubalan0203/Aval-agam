@@ -59,7 +59,7 @@ export function ImageUploader({ cover, gallery, onChange, onBusyChange, error }:
 
   function run(job: Job) {
     setJobs(j => [...j.filter(x => x.key !== job.key), { ...job, progress: 0, error: undefined }]);
-    uploadFile(job.file, job.target === "cover" ? "chapterone/hero" : "chapterone/gallery", p => setJobs(j => j.map(x => x.key === job.key ? { ...x, progress: p } : x)))
+    uploadFile(job.file, job.target === "cover" ? "Avalagam/hero" : "Avalagam/gallery", p => setJobs(j => j.map(x => x.key === job.key ? { ...x, progress: p } : x)))
       .then(url => {
         const cur = latest.current;
         const next = job.target === "cover" ? { ...cur, cover: url } : { ...cur, gallery: [...cur.gallery, url] };
