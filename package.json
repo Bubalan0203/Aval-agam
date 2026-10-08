@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:event-sessions": "node --import tsx --test tests/event-sessions.test.ts",
-    "test:event-content": "node --import tsx --test tests/event-content.test.ts"
+    "test:event-content": "node --import tsx --test tests/event-content.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",

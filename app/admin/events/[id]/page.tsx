@@ -1,211 +1,138 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, Clock, MapPin, Ticket, Trash2, Edit2, Mail, Phone, User } from "lucide-react";
-import { EventDescription } from "@/components/EventDescription";
-import { EventVideos } from "@/components/EventVideos";
-import { getEvent, getEventBookings, deleteEvent } from "@/lib/firestore";
-import type { Event, Booking } from "@/lib/firestore";
-import { BookingStatusChip, bookingStatus } from "@/components/BookingStatusChip";
-import { AdminEventSessions } from "@/components/AdminEventSessions";
+import { Archive, ArrowLeft, Copy, Download, Edit2, Eye, Send, Trash2, Undo2 } from "lucide-react";
+import {
+  cancelEventSession, deleteEvent, duplicateEvent, getEvent, getEventBookings, getEvents, setEventStatus,
+  type Booking, type Event, type EventStatus,
+} from "@/lib/firestore";
+import { sendCancellationEmails } from "@/lib/cancellation-email";
+import { sessionAvailable, sessionStart, type EventSession } from "@/lib/event-sessions";
+import { formatDateShort, formatTime12, rupees, sessionCapacity, sessionSold } from "@/lib/booking-logic";
+import { BookingsTable } from "@/components/admin/BookingsTable";
+import { exportBookingsCsv } from "@/components/admin/BookingTools";
 import { ConfirmModal } from "@/components/ConfirmModal";
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
+import { Badge, Button, C, Card, Empty, EventStatusBadge, Field, inputStyle, useToast } from "@/components/admin/ui";
 
 export default function AdminEventDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router  = useRouter();
-
-  const [event, setEvent]       = useState<Event | null>(null);
+  const router = useRouter();
+  const { setToast, toastNode } = useToast();
+  const [event, setEvent] = useState<Event | null | undefined>(undefined);
+  const [events, setEvents] = useState<Event[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [deleteError, setDeleteError] = useState("");
-  const [deleting, setDeleting] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [cancelling, setCancelling] = useState<EventSession | null>(null);
+  const [reason, setReason] = useState("");
 
-  useEffect(() => {
-    Promise.all([getEvent(id), getEventBookings(id)]).then(([evt, bkgs]) => {
-      setEvent(evt);
-      setBookings(bkgs);
-      setLoading(false);
-    });
+  const load = useCallback(() => {
+    Promise.all([getEvent(id), getEventBookings(id), getEvents()]).then(([e, b, all]) => { setEvent(e); setBookings(b); setEvents(all); })
+      .catch(() => setEvent(null));
   }, [id]);
+  useEffect(load, [load]);
 
-  async function handleDelete() {
-    setDeleting(true);
-    try { await deleteEvent(id); router.push("/admin/dashboard"); }
-    catch (error) { setDeleteError((error as Error).message); }
-    finally { setDeleting(false); setConfirmOpen(false); }
+  async function run(fn: () => Promise<unknown>, msg: string) {
+    setBusy(true);
+    try { const r = await fn(); setToast({ type: "success", msg: typeof r === "string" ? r : msg }); load(); }
+    catch (e) { setToast({ type: "error", msg: (e as Error).message }); }
+    finally { setBusy(false); }
   }
 
-  if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "40vh" }}>
-      <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", opacity: 0.5 }}>Loading…</p>
-    </div>
-  );
+  if (event === undefined) return <Empty>Loading…</Empty>;
+  if (!event) return <Empty>Event not found.</Empty>;
 
-  if (!event) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "40vh", gap: "12px" }}>
-      <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px" }}>Event not found</p>
-      <button onClick={() => router.push("/admin/dashboard")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", border: "none", borderRadius: "9999px", padding: "10px 24px", cursor: "pointer" }}>Back to Dashboard</button>
-    </div>
-  );
-
-  const totalRevenue = bookings.filter(b => bookingStatus(b, event) === "confirmed").reduce((s, b) => s + b.amount, 0);
+  const cap = sessionCapacity(event);
+  const confirmed = bookings.filter(b => b.status === "confirmed");
+  const revenue = confirmed.reduce((n, b) => n + b.amount, 0);
+  const refundsDue = bookings.filter(b => b.status === "refund_required").length;
+  const sessions = [...event.sessions].sort((a, b) => sessionStart(a) - sessionStart(b));
+  const affected = cancelling ? confirmed.filter(b => b.sessionId === cancelling.id) : [];
+  const status = (s: EventStatus, msg: string) => run(() => setEventStatus(event.id, s), msg);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-
-      {deleteError && <p role="alert">{deleteError}</p>}
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <button onClick={() => router.push("/admin/dashboard")} style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "1px solid #EEE2D5", color: "#2F3328", fontFamily: "Poppins, sans-serif", fontSize: "13px", borderRadius: "9999px", padding: "8px 16px", cursor: "pointer" }}>
-            <ArrowLeft size={14} /> Back
-          </button>
-          <h1 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>{event.title}</h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Link href="/admin/events"><Button variant="secondary"><ArrowLeft size={14} /> Events</Button></Link>
+          <h1 style={{ fontFamily: "Playfair Display, serif", fontSize: 22, fontWeight: 700, color: C.green }}>{event.title}</h1>
+          <EventStatusBadge status={event.status} />
         </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button onClick={() => router.push(`/admin/events/${id}/edit`)} style={{ display: "flex", alignItems: "center", gap: "7px", backgroundColor: "#EEE2D5", color: "#0F332B", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "10px 20px", cursor: "pointer" }}>
-            <Edit2 size={13} /> Edit
-          </button>
-          <button onClick={() => setConfirmOpen(true)} disabled={deleting} style={{ display: "flex", alignItems: "center", gap: "7px", backgroundColor: "rgba(200,115,79,0.12)", color: "#C8734F", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "10px 20px", cursor: "pointer", opacity: deleting ? 0.6 : 1 }}>
-            <Trash2 size={13} /> {deleting ? "Deleting…" : "Delete"}
-          </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link href={`/admin/events/${event.id}/edit`}><Button variant="secondary"><Edit2 size={14} /> Edit</Button></Link>
+          <Link href={`/events/${event.id}?preview=1`} target="_blank"><Button variant="secondary"><Eye size={14} /> View</Button></Link>
+          {event.status === "draft" && <Button disabled={busy} onClick={() => status("published", "Published.")}><Send size={14} /> Publish</Button>}
+          {event.status === "published" && <Button variant="secondary" disabled={busy} onClick={() => status("draft", "Moved to drafts — hidden from the site.")}><Undo2 size={14} /> Unpublish</Button>}
+          {event.status !== "archived" ? <Button variant="secondary" disabled={busy} onClick={() => status("archived", "Archived.")}><Archive size={14} /> Archive</Button>
+            : <Button variant="secondary" disabled={busy} onClick={() => status("draft", "Restored as draft.")}><Undo2 size={14} /> Restore</Button>}
+          <Button variant="secondary" disabled={busy} onClick={() => run(async () => { const nid = await duplicateEvent(event.id); router.push(`/admin/events/${nid}/edit`); }, "Copied as a draft.")}><Copy size={14} /> Duplicate</Button>
+          <Button variant="danger" disabled={busy || bookings.length > 0} title={bookings.length ? "Has bookings — archive instead" : undefined} onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button>
         </div>
       </div>
 
-      <AdminEventSessions event={event} onUpdate={setEvent} />
-
-      {/* Event info + hero */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }} className="grid grid-cols-1 md:grid-cols-2">
-
-        {/* Hero image */}
-        <div style={{ borderRadius: "16px", overflow: "hidden", aspectRatio: "16/9" }}>
-          {event.image ? (
-            <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          ) : (
-            <div style={{ width: "100%", height: "100%", backgroundColor: "#EEE2D5" }} />
-          )}
-        </div>
-
-        {/* Details */}
-        <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)", display: "flex", flexDirection: "column", gap: "14px" }}>
-          <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: 600, backgroundColor: "rgba(201,162,95,0.15)", color: "#C9A25F", borderRadius: "9999px", padding: "4px 14px", width: "fit-content" }}>{event.category}</span>
-
-          {[
-            { icon: <Calendar size={14} style={{ color: "#C9A25F" }} />, label: "Date",  value: formatDate(event.date) },
-            { icon: <Clock    size={14} style={{ color: "#C9A25F" }} />, label: "Time",  value: `${event.startTime} — ${event.endTime}` },
-            { icon: <MapPin   size={14} style={{ color: "#C9A25F" }} />, label: "Venue", value: event.location },
-          ].map(({ icon, label, value }) => (
-            <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-              <div style={{ marginTop: "2px", flexShrink: 0 }}>{icon}</div>
-              <div>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "10px", opacity: 0.5, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase" }}>{label}</p>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 500 }}>{value}</p>
-              </div>
-            </div>
-          ))}
-
-          {event.locationUrl && (
-            <a href={event.locationUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", textDecoration: "none", fontWeight: 500 }}>
-              <MapPin size={12} /> Open in Maps ↗
-            </a>
-          )}
-
-          {/* Ticket types */}
-          <div style={{ borderTop: "1px solid #EEE2D5", paddingTop: "14px" }}>
-            <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", opacity: 0.5, marginBottom: "8px" }}>Tickets</p>
-            {event.ticketTypes.map(t => (
-              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <Ticket size={12} style={{ color: "#C9A25F" }} />
-                  <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#0F332B" }}>{t.name}</span>
-                </div>
-                <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                  <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#2F3328", opacity: 0.6 }}>{t.available} seats per date · {t.sold} booked across dates</span>
-                  <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, color: "#C8734F" }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
-                </div>
-              </div>
-            ))}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[["Confirmed bookings", confirmed.length], ["Seats sold", confirmed.reduce((n, b) => n + b.quantity, 0)], ["Revenue", rupees(revenue)], ["Refunds needed", refundsDue]].map(([k, v]) => (
+          <div key={k as string} style={{ background: C.cream, borderRadius: 14, padding: 16 }}>
+            <p style={{ fontSize: 12, opacity: 0.6 }}>{k}</p>
+            <p style={{ fontFamily: "Playfair Display, serif", fontSize: 22, fontWeight: 700, color: k === "Refunds needed" && refundsDue ? C.clay : C.green }}>{v}</p>
           </div>
-        </div>
+        ))}
       </div>
 
-      <EventDescription value={event.description} format={event.descriptionFormat} />
-      <EventVideos urls={event.youtubeUrls} />
-
-      {/* Gallery */}
-      {event.gallery.length > 0 && (
-        <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "22px 24px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
-          <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "18px", fontWeight: 700, marginBottom: "14px" }}>Gallery</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-            {event.gallery.map((img, i) => (
-              <div key={i} style={{ aspectRatio: "1/1", borderRadius: "10px", overflow: "hidden" }}>
-                <img src={img} alt={`Gallery ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
-            ))}
+      <Card title="Dates" subtitle="Seats per date. Download the attendee list for each date, or cancel a date that hasn't started."
+        action={<Button variant="secondary" disabled={busy} onClick={() => run(async () => { const r = await sendCancellationEmails(event.id); return `${r.sent} cancellation emails sent, ${r.failed} failed.`; }, "Done.")}>Retry cancellation emails</Button>}>
+        {sessions.length === 0 ? <Empty>No dates yet. Edit the event to add some.</Empty> : (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {sessions.map(s => {
+              const sold = sessionSold(s);
+              const att = confirmed.filter(b => b.sessionId === s.id);
+              return (
+                <div key={s.id} style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderTop: `1px solid ${C.sand}`, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 200 }}>
+                    <p style={{ fontWeight: 600, color: C.green }}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}–{formatTime12(s.endTime)}</p>
+                    <p style={{ fontSize: 12, opacity: 0.7 }}>{event.ticketTypes.map(t => `${t.name}: ${s.sold[t.id] ?? 0}/${t.available}`).join(" · ")}</p>
+                    {s.cancellationReason && <p style={{ fontSize: 12, color: C.clay }}>Reason: {s.cancellationReason}</p>}
+                  </div>
+                  <div style={{ flex: "1 1 160px", maxWidth: 240 }}>
+                    <div style={{ height: 8, background: C.sand, borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${cap ? Math.min(100, (sold / cap) * 100) : 0}%`, height: "100%", background: sold >= cap ? C.clay : C.green }} /></div>
+                    <p style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>{sold}/{cap} seats</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {s.status === "cancelled" ? <Badge tone="warn">Cancelled</Badge> : sessionAvailable(s) ? (sold >= cap ? <Badge tone="warn">Sold out</Badge> : <Badge tone="good">Upcoming</Badge>) : <Badge>Completed</Badge>}
+                    <Button variant="secondary" disabled={!att.length} onClick={() => exportBookingsCsv(`attendees-${s.date}-${s.startTime.replace(":", "")}.csv`, att)}><Download size={14} /> {att.length}</Button>
+                    {sessionAvailable(s) && <Button variant="danger" onClick={() => { setCancelling(s); setReason(""); }}>Cancel date</Button>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
+      </Card>
+
+      {cancelling && (
+        <Card title={`Cancel ${formatDateShort(cancelling.date)} · ${formatTime12(cancelling.startTime)}?`} subtitle="This is permanent. Customers get a cancellation email; paid bookings move to Refund needed.">
+          <p style={{ fontSize: 13, marginBottom: 10 }}>{affected.length} booking{affected.length === 1 ? "" : "s"} affected ({affected.reduce((n, b) => n + b.quantity, 0)} seats, {rupees(affected.reduce((n, b) => n + b.amount, 0))}).</p>
+          {affected.length > 0 && <ul style={{ fontSize: 12, marginBottom: 12, maxHeight: 160, overflowY: "auto" }}>{affected.map(b => <li key={b.id}>{b.name} · {b.email} · {b.quantity} × {b.ticketType} · {rupees(b.amount)}</li>)}</ul>}
+          <Field label="Reason (sent to customers)" required><textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} style={inputStyle()} /></Field>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+            <Button variant="secondary" disabled={busy} onClick={() => setCancelling(null)}>Keep date</Button>
+            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => run(async () => {
+              await cancelEventSession(event.id, cancelling.id, reason);
+              setCancelling(null);
+              const r = await sendCancellationEmails(event.id);
+              return `Date cancelled. ${r.sent} emails sent, ${r.failed} failed.`;
+            }, "Date cancelled.")}>{busy ? "Cancelling…" : "Cancel date permanently"}</Button>
+          </div>
+        </Card>
       )}
 
-      {/* Bookings */}
-      <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", overflow: "hidden", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EEE2D5" }}>
-          <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "18px", fontWeight: 700 }}>Bookings <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 400, opacity: 0.5 }}>({bookings.length})</span></p>
-          {bookings.length > 0 && (
-            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#0F332B", fontWeight: 600 }}>Revenue: ₹{totalRevenue.toLocaleString()}</span>
-          )}
-        </div>
+      <BookingsTable bookings={bookings} events={events} fixedEventId={event.id} onChanged={msg => { setToast({ type: "success", msg }); load(); }} />
 
-        {bookings.length === 0 ? (
-          <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", opacity: 0.4, padding: "32px 24px", textAlign: "center" }}>No bookings yet for this event.</p>
-        ) : (
-          <>
-            {/* Table header */}
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", padding: "10px 24px", backgroundColor: "#EEE2D560", borderBottom: "1px solid #EEE2D5" }}>
-              {["CUSTOMER", "TICKET", "QTY", "AMOUNT"].map(h => (
-                <p key={h} style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", fontWeight: 600, letterSpacing: "0.07em", opacity: 0.5 }}>{h}</p>
-              ))}
-            </div>
-
-            {bookings.map((b, idx) => (
-              <div key={b.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", padding: "14px 24px", alignItems: "center", borderBottom: idx < bookings.length - 1 ? "1px solid #EEE2D5" : "none" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <User size={12} style={{ color: "#C9A25F" }} />
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600 }}>{b.name}<small style={{ display: "block" }}>{b.sessionDate ?? event.date} · {b.sessionStartTime ?? event.startTime}</small></span>
-                  </div>
-                  <BookingStatusChip booking={b} event={event} />
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Mail size={11} style={{ color: "#2F3328", opacity: 0.4 }} />
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", opacity: 0.6 }}>{b.email}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Phone size={11} style={{ color: "#2F3328", opacity: 0.4 }} />
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", opacity: 0.6 }}>{b.phone}</span>
-                  </div>
-                </div>
-                <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#0F332B" }}>{b.ticketType}</span>
-                <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#0F332B" }}>{b.quantity}</span>
-                <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "14px", fontWeight: 700, color: "#C8734F" }}>{b.amount === 0 ? "Free" : `₹${b.amount.toLocaleString()}`}</span>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-
-      <ConfirmModal
-        open={confirmOpen}
-        title="Delete this event?"
-        message="Permanently delete this event? This cannot be undone. Events with bookings or cancelled dates are protected from deletion."
-        requiredText={event.title}
-        busy={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmOpen(false)}
-      />
+      <ConfirmModal open={confirmDelete} title="Delete this event?" message="This can't be undone." requiredText={event.title} busy={busy}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => run(async () => { await deleteEvent(event.id); router.push("/admin/events"); }, "Deleted.")} />
+      {toastNode}
     </div>
   );
 }

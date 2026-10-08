@@ -18,12 +18,3 @@ test("invalid dates, duplicate slots, reverse times and elapsed times are reject
 test("legacy inventory retained under stable id",()=>assert.deepEqual(legacySessions({date:"2026-08-07",startTime:"6:30 PM",endTime:"7:30 PM",ticketTypes:[{id:"adult",sold:3}]}),[session({id:"legacy",sold:{adult:3}})]));
 test("availability uses venue timezone and cancellation status",()=>{assert.equal(sessionStart(session()),Date.parse("2026-08-07T13:00:00Z"));assert.equal(sessionAvailable(session({status:"cancelled"}),now),false);assert.equal(localToday(new Date("2026-08-01T20:00:00Z")),"2026-08-02");});
 
-test("cancelled date bookings immediately show refund-needed without waiting for the mail worker", async () => {
-  const { bookingStatus } = await import("../components/BookingStatusChip");
-  const event = { sessions: [session({status:"cancelled"})] } as import("../lib/firestore").Event;
-  const paid = {sessionId:"one",amount:500,status:"confirmed"} as import("../lib/firestore").Booking;
-  assert.equal(bookingStatus(paid,event),"refund_required");
-  assert.equal(bookingStatus({...paid,amount:0},event),"cancelled");
-  assert.equal(bookingStatus({...paid,sessionId:"other"},event),"confirmed");
-  assert.equal(bookingStatus({...paid,status:"refunded"},event),"refunded");
-});

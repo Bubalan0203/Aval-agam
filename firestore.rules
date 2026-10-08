@@ -1,0 +1,45 @@
+rules_version = '2';
+// Deploy with: firebase deploy --only firestore:rules
+// Admins: create a document at admins/{uid} (any content) for each admin user in the Firebase console.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      // Public booking may only change the seat counters inside `sessions`,
+      // and the number of dates must stay the same.
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sessions'])
+        && request.resource.data.sessions.size() == resource.data.sessions.size()
+        && resource.data.get('status', 'published') == 'published'
+      );
+    }
+
+    match /bookings/{bookingId} {
+      allow read, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.status in ['confirmed', 'refund_required']
+        && request.resource.data.source == 'website'
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity >= 1 && request.resource.data.quantity <= 10
+        && request.resource.data.amount is number && request.resource.data.amount >= 0
+        && request.resource.data.email is string && request.resource.data.name is string
+        && request.resource.data.confirmationEmailSentAt == null
+      );
+      // The booking page may stamp the confirmation email time once; everything else is admin-only.
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmationEmailSentAt'])
+        && resource.data.confirmationEmailSentAt == null
+      );
+    }
+  }
+}

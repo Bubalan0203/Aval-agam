@@ -1,175 +1,114 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, CalendarDays, DollarSign, Ticket, Plus, Search, Trash2 } from "lucide-react";
-import { getEvents, getBookings, deleteEvent } from "@/lib/firestore";
-import type { Event, Booking } from "@/lib/firestore";
-import { bookingStatus } from "@/components/BookingStatusChip";
-import { ConfirmModal } from "@/components/ConfirmModal";
-
-const MONTHS = ["All Months","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const YEARS  = ["All Years", "2025", "2026", "2027"];
+import { AlertTriangle, Plus } from "lucide-react";
+import { getBookings, getEvents, migrateEvents, type Booking, type Event } from "@/lib/firestore";
+import { amountMismatch, formatDateShort, formatTime12, rupees, sessionCapacity, sessionSold, upcomingSessions } from "@/lib/booking-logic";
+import { Badge, BookingStatusBadge, Button, C, Card, Empty, useToast } from "@/components/admin/ui";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [events, setEvents]   = useState<Event[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [search, setSearch]   = useState("");
-  const [month, setMonth]     = useState("All Months");
-  const [year, setYear]       = useState("All Years");
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const { setToast, toastNode } = useToast();
+  const [data, setData] = useState<{ events: Event[]; bookings: Booking[] } | null>(null);
+  const [error, setError] = useState("");
+  const [migrating, setMigrating] = useState(false);
 
-  useEffect(() => {
-    Promise.all([getEvents(), getBookings()]).then(([evts, bkgs]) => {
-      setEvents(evts);
-      setBookings(bkgs);
-      setLoading(false);
-    }).catch(() => {
-      setLoadError("Could not load events and bookings. Check Firebase configuration and permissions, then reload.");
-      setLoading(false);
-    });
-  }, []);
+  const load = () => Promise.all([getEvents(), getBookings()]).then(([events, bookings]) => setData({ events, bookings }))
+    .catch(() => setError("Could not load data. Check Firebase configuration and admin access."));
+  useEffect(() => { load(); }, []);
 
-  const totalRevenue = bookings.filter(b => bookingStatus(b, events.find(e => e.id === b.eventId)) === "confirmed").reduce((s, b) => s + b.amount, 0);
-  const totalSold = bookings.filter(b => bookingStatus(b, events.find(e => e.id === b.eventId)) === "confirmed").reduce((sum,b) => sum + b.quantity,0);
+  const stats = useMemo(() => {
+    if (!data) return null;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const confirmed = data.bookings.filter(b => b.status === "confirmed");
+    const thisMonth = confirmed.filter(b => (b.bookedAt?.toMillis() ?? 0) >= monthStart);
+    const eventsById = new Map(data.events.map(e => [e.id, e]));
+    const upcoming = data.events.filter(e => e.status === "published")
+      .flatMap(e => upcomingSessions(e).map(s => ({ e, s })))
+      .sort((a, b) => `${a.s.date}${a.s.startTime}`.localeCompare(`${b.s.date}${b.s.startTime}`)).slice(0, 8);
+    return {
+      revenue: confirmed.reduce((n, b) => n + b.amount, 0),
+      monthRevenue: thisMonth.reduce((n, b) => n + b.amount, 0),
+      monthBookings: thisMonth.length,
+      seats: confirmed.reduce((n, b) => n + b.quantity, 0),
+      refunds: data.bookings.filter(b => b.status === "refund_required"),
+      flagged: confirmed.filter(b => amountMismatch(b, eventsById.get(b.eventId))),
+      unsentEmails: confirmed.filter(b => !b.confirmationEmailSentAt && b.source === "website"),
+      drafts: data.events.filter(e => e.status === "draft").length,
+      needsMigration: data.events.some(e => e.schemaVersion !== 3),
+      upcoming, recent: data.bookings.slice(0, 8),
+    };
+  }, [data]);
 
-  const stats = [
-    { label: "Total Bookings", value: String(bookings.length),             color: "#C8734F", Icon: BookOpen    },
-    { label: "Total Revenue",  value: `₹${totalRevenue.toLocaleString()}`, color: "#0F332B", Icon: DollarSign  },
-    { label: "Events",         value: String(events.length),               color: "#C9A25F", Icon: CalendarDays },
-    { label: "Tickets Sold",   value: String(totalSold),                   color: "#2F3328", Icon: Ticket      },
-  ];
-
-  const filtered = useMemo(() => events.filter((e) => {
-    const d = new Date(e.date);
-    const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) || e.location.toLowerCase().includes(search.toLowerCase());
-    const matchMonth  = month === "All Months" || d.toLocaleString("en", { month: "short" }) === month;
-    const matchYear   = year  === "All Years"  || String(d.getFullYear()) === year;
-    return matchSearch && matchMonth && matchYear;
-  }), [events, search, month, year]);
-
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-
-  async function handleDelete() {
-    if (!confirmId) return;
-    setDeleting(confirmId);
-    try {
-    await deleteEvent(confirmId);
-    setEvents(p => p.filter(e => e.id !== confirmId));
-    setBookings(p => p.filter(b => b.eventId !== confirmId));
-    } catch (error) { setLoadError((error as Error).message); }
-    finally { setDeleting(null); setConfirmId(null); }
-  }
+  if (error) return <Empty>{error}</Empty>;
+  if (!data || !stats) return <Empty>Loading…</Empty>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-      {loadError && <p role="alert" style={{ color: "#a54c2c" }}>{loadError}</p>}
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h1 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700, marginBottom: "4px" }}>Dashboard</h1>
-          <p style={{ color: "#2F3328", fontSize: "14px", opacity: 0.6 }}>Aval Agam events &amp; bookings overview</p>
-        </div>
-        <button onClick={() => router.push("/admin/events/create")} style={{ display: "flex", alignItems: "center", gap: "8px", backgroundColor: "#0F332B", color: "#FBF4E8", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "12px 24px", cursor: "pointer" }}>
-          <Plus size={15} /> CREATE EVENT
-        </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ fontFamily: "Playfair Display, serif", fontSize: 24, fontWeight: 700, color: C.green }}>Dashboard</h1>
+        <Link href="/admin/events/create"><Button><Plus size={14} /> New event</Button></Link>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {stats.map(({ label, value, color, Icon }) => (
-          <div key={label} style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", padding: "20px 22px", boxShadow: "0 1px 8px rgba(15,51,43,0.06)", display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <p style={{ color: "#2F3328", fontSize: "12px", opacity: 0.6, fontWeight: 500 }}>{label}</p>
-              <div style={{ width: "34px", height: "34px", borderRadius: "9px", backgroundColor: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={16} style={{ color }} />
-              </div>
-            </div>
-            <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700 }}>{loading ? "—" : value}</p>
+      {stats.needsMigration && (
+        <Card title="Data upgrade needed" subtitle="Some events use the old format. Upgrade once so seat counts, statuses and bookings line up with the new admin.">
+          <Button disabled={migrating} onClick={async () => {
+            setMigrating(true);
+            try { const r = await migrateEvents(); setToast({ type: "success", msg: `Upgraded ${r.events} events and ${r.bookings} bookings.` }); load(); }
+            catch (e) { setToast({ type: "error", msg: (e as Error).message }); }
+            finally { setMigrating(false); }
+          }}>{migrating ? "Upgrading…" : "Upgrade now"}</Button>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          ["Revenue (all time)", rupees(stats.revenue)],
+          ["This month", `${rupees(stats.monthRevenue)} · ${stats.monthBookings}`],
+          ["Seats sold", stats.seats],
+          ["Drafts", stats.drafts],
+        ].map(([k, v]) => (
+          <div key={k as string} style={{ background: C.cream, borderRadius: 14, padding: 16 }}>
+            <p style={{ fontSize: 12, opacity: 0.6 }}>{k}</p>
+            <p style={{ fontFamily: "Playfair Display, serif", fontSize: 22, fontWeight: 700, color: C.green }}>{v}</p>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-        <div style={{ position: "relative", flex: "1 1 220px" }}>
-          <Search size={14} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2F3328", opacity: 0.4 }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search events…" style={{ width: "100%", fontSize: "13px", color: "#2F3328", backgroundColor: "#FBF4E8", border: "1.5px solid #EEE2D5", borderRadius: "9999px", padding: "9px 16px 9px 36px", outline: "none", boxSizing: "border-box", fontFamily: "Poppins, sans-serif" }} />
-        </div>
-        {[{ val: month, set: setMonth, opts: MONTHS }, { val: year, set: setYear, opts: YEARS }].map(({ val, set, opts }) => (
-          <select key={opts[0]} value={val} onChange={e => set(e.target.value)} style={{ fontFamily: "Poppins, sans-serif", fontSize: "13px", color: "#2F3328", backgroundColor: "#FBF4E8", border: "1.5px solid #EEE2D5", borderRadius: "9999px", padding: "9px 18px", cursor: "pointer", outline: "none" }}>
-            {opts.map(o => <option key={o}>{o}</option>)}
-          </select>
-        ))}
-      </div>
+      {(stats.refunds.length > 0 || stats.flagged.length > 0 || stats.unsentEmails.length > 0) && (
+        <Card title="Needs attention">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+            {stats.refunds.length > 0 && <Link href="/admin/bookings?status=refund_required" style={{ display: "flex", gap: 8, alignItems: "center", color: C.clay, fontWeight: 600 }}><AlertTriangle size={14} /> {stats.refunds.length} booking{stats.refunds.length === 1 ? "" : "s"} waiting for a refund ({rupees(stats.refunds.reduce((n, b) => n + b.amount, 0))})</Link>}
+            {stats.flagged.length > 0 && <Link href="/admin/bookings" style={{ display: "flex", gap: 8, alignItems: "center", color: C.clay }}><AlertTriangle size={14} /> {stats.flagged.length} paid amount{stats.flagged.length === 1 ? "" : "s"} below the ticket price — check in Razorpay</Link>}
+            {stats.unsentEmails.length > 0 && <Link href="/admin/bookings?status=confirmed" style={{ display: "flex", gap: 8, alignItems: "center", color: C.ink }}><AlertTriangle size={14} /> {stats.unsentEmails.length} confirmation email{stats.unsentEmails.length === 1 ? "" : "s"} not sent — open the booking to resend</Link>}
+          </div>
+        </Card>
+      )}
 
-      {/* Events table */}
-      <div style={{ backgroundColor: "#FBF4E8", borderRadius: "16px", overflow: "hidden", boxShadow: "0 1px 8px rgba(15,51,43,0.06)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px 80px 60px", gap: "0", padding: "10px 20px", borderBottom: "1px solid #EEE2D5", backgroundColor: "#EEE2D560" }}>
-          {["EVENT", "DATE", "CATEGORY", "TICKETS", "BOOKINGS", ""].map(h => (
-            <p key={h} style={{ color: "#2F3328", fontSize: "11px", fontWeight: 600, letterSpacing: "0.07em", opacity: 0.5 }}>{h}</p>
-          ))}
-        </div>
-
-        {loading && (
-          <p style={{ color: "#2F3328", fontSize: "14px", opacity: 0.5, padding: "32px 20px", textAlign: "center", fontFamily: "Poppins, sans-serif" }}>Loading events…</p>
-        )}
-
-        {!loading && filtered.length === 0 && (
-          <p style={{ color: "#2F3328", fontSize: "14px", opacity: 0.5, padding: "32px 20px", textAlign: "center", fontFamily: "Poppins, sans-serif" }}>No events found.</p>
-        )}
-
-        {filtered.map((event, idx) => {
-          const sold   = event.ticketTypes.reduce((a, t) => a + t.sold, 0);
-          const total  = event.ticketTypes.reduce((a, t) => a + t.available, 0);
-          const booked = bookings.filter(b => b.eventId === event.id).length;
-
-          return (
-            <div key={event.id} onClick={() => router.push(`/admin/events/${event.id}`)} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px 80px 60px", gap: "0", padding: "16px 20px", alignItems: "center", borderBottom: idx < filtered.length - 1 ? "1px solid #EEE2D5" : "none", cursor: "pointer" }} className="hover:bg-[#EEE2D530]">
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                {event.image ? (
-                  <img src={event.image} alt={event.title} style={{ width: "44px", height: "44px", borderRadius: "10px", objectFit: "cover", flexShrink: 0 }} />
-                ) : (
-                  <div style={{ width: "44px", height: "44px", borderRadius: "10px", backgroundColor: "#EEE2D5", flexShrink: 0 }} />
-                )}
-                <div>
-                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 600 }}>{event.title}</p>
-                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", opacity: 0.55 }}>{event.location}</p>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card title="Upcoming dates">
+          {stats.upcoming.length === 0 ? <Empty>No upcoming dates.</Empty> : stats.upcoming.map(({ e, s }) => {
+            const cap = sessionCapacity(e); const sold = sessionSold(s);
+            return (
+              <div key={e.id + s.id} onClick={() => router.push(`/admin/events/${e.id}`)} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.sand}`, cursor: "pointer", fontSize: 13 }}>
+                <div style={{ minWidth: 0 }}><p style={{ fontWeight: 600, color: C.green }}>{e.title}</p><p style={{ fontSize: 12, opacity: 0.65 }}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}</p></div>
+                <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>{sold >= cap ? <Badge tone="warn">Sold out</Badge> : <span>{sold}/{cap}</span>}</div>
               </div>
-              <div>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 500 }}>{new Date(event.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", opacity: 0.55 }}>{event.startTime}</p>
-              </div>
-              <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: 600, backgroundColor: "rgba(201,162,95,0.15)", color: "#C9A25F", borderRadius: "9999px", padding: "4px 12px", width: "fit-content" }}>{event.category}</span>
-              <div>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 700 }}>{sold}</p>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", opacity: 0.5 }}>of {total}</p>
-              </div>
-              <div>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 700 }}>{booked}</p>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "11px", opacity: 0.5 }}>bookings</p>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); setConfirmId(event.id); }} disabled={deleting === event.id} style={{ width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(200,115,79,0.1)", border: "none", borderRadius: "8px", cursor: "pointer", color: "#C8734F", opacity: deleting === event.id ? 0.5 : 1 }}>
-                <Trash2 size={14} />
-              </button>
+            );
+          })}
+        </Card>
+        <Card title="Recent bookings" action={<Link href="/admin/bookings" style={{ fontSize: 13, color: C.clay }}>All bookings →</Link>}>
+          {stats.recent.length === 0 ? <Empty>No bookings yet.</Empty> : stats.recent.map(b => (
+            <div key={b.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.sand}`, fontSize: 13 }}>
+              <div style={{ minWidth: 0 }}><p style={{ fontWeight: 600, color: C.green }}>{b.name}</p><p style={{ fontSize: 12, opacity: 0.65 }}>{b.eventTitle} · {formatDateShort(b.sessionDate)}</p></div>
+              <div style={{ textAlign: "right" }}><p style={{ fontWeight: 600 }}>{rupees(b.amount)}</p><BookingStatusBadge status={b.status} /></div>
             </div>
-          );
-        })}
+          ))}
+        </Card>
       </div>
-
-      <ConfirmModal
-        open={!!confirmId}
-        title="Delete this event?"
-        message="Permanently delete this event? Events with bookings or cancelled dates are protected. This cannot be undone."
-        requiredText={events.find(e => e.id === confirmId)?.title}
-        busy={!!deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmId(null)}
-      />
+      {toastNode}
     </div>
   );
 }

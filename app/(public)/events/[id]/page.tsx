@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Calendar, Clock, MapPin, ArrowLeft, X } from "lucide-react";
-import { getEvent, getEvents } from "@/lib/firestore";
+import { getEvent, getPublishedEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
-import { legacySessions, sessionAvailable } from "@/lib/event-sessions";
+import { useSearchParams } from "next/navigation";
+import { bookableSessions, formatDateShort, formatTime12, sessionRemaining, upcomingSessions } from "@/lib/booking-logic";
 import { BookingModal } from "@/components/BookingModal";
 import { EventDescription } from "@/components/EventDescription";
 import { EventMediaGallery } from "@/components/EventMediaGallery";
@@ -16,28 +17,34 @@ function formatDate(d: string) {
 
 
 export default function EventDetailsPage() {
+  return <Suspense fallback={null}><EventDetails /></Suspense>;
+}
+
+function EventDetails() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [event, setEvent] = useState<Event | null>(null);
   const [otherEvents, setOtherEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const preview = useSearchParams().get("preview") === "1";
   const [modalOpen, setModalOpen] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
+  const reloadEvent = () => { getEvent(id).then(e => { if (e) setEvent(e); }).catch(() => {}); };
+
   useEffect(() => {
-    Promise.all([getEvent(id), getEvents()]).then(([evt, all]) => {
-      setEvent(evt);
+    Promise.all([getEvent(id), getPublishedEvents()]).then(([evt, all]) => {
+      setEvent(evt && (evt.status === "published" || preview) ? evt : null);
 
       setOtherEvents(
         all
-          .filter(e => e.id !== id && legacySessions(e).some(s => sessionAvailable(s)))
+          .filter(e => e.id !== id && upcomingSessions(e).length > 0)
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
           .slice(0, 3)
       );
       setLoading(false);
     });
-  }, [id]);
+  }, [id, preview]);
 
   // Reset after async content mounts as well as when navigating between events.
   useEffect(() => {
@@ -73,10 +80,10 @@ export default function EventDetailsPage() {
     );
   }
 
-  const sessions = legacySessions(event);
-  const selected = sessions.find(s => s.id === selectedSessionId) ?? sessions.find(s => sessionAvailable(s));
-  const bookingEvent = selected ? { ...event, selectedSessionId: selected.id, date: selected.date, startTime: selected.startTime, endTime: selected.endTime, ticketTypes: event.ticketTypes.map(t => ({ ...t, sold: selected.sold[t.id] ?? 0 })) } : event;
-  const isSoldOut = !selected || !sessionAvailable(selected) || bookingEvent.ticketTypes.every(t => t.sold >= t.available);
+  const upcoming = upcomingSessions(event);
+  const nextOpen = bookableSessions(event)[0];
+  const isSoldOut = !nextOpen;
+  const shown = nextOpen ?? upcoming[0];
 
   return (
     <div style={{ fontFamily: "Poppins, sans-serif" }}>
@@ -109,12 +116,27 @@ export default function EventDetailsPage() {
             {/* Full-width content */}
             <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
 
-              <section><h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>Choose your date</h2><div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>{sessions.map(s => <button key={s.id} type="button" disabled={!sessionAvailable(s)} aria-pressed={selected?.id === s.id} onClick={() => setSelectedSessionId(s.id)} style={{ padding: 16, borderRadius: 12, border: "1px solid #C9A25F", background: selected?.id === s.id ? "#0F332B" : "#EEE2D5", color: selected?.id === s.id ? "white" : "#0F332B", opacity: sessionAvailable(s) ? 1 : .6 }}><strong>{formatDate(s.date)}</strong><br />{s.startTime}–{s.endTime} IST<br />{s.status === "cancelled" ? "Cancelled" : !sessionAvailable(s) ? "Started / completed" : "Select date"}</button>)}</div></section>
+              {upcoming.length > 1 && (
+                <section>
+                  <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700, marginBottom: "12px" }}>Upcoming dates</h2>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                    {upcoming.map(s => {
+                      const left = sessionRemaining(event, s);
+                      return (
+                        <button key={s.id} type="button" disabled={left === 0} onClick={() => setModalOpen(true)} style={{ textAlign: "left", padding: "12px 16px", borderRadius: "12px", border: "1px solid #EEE2D5", background: "#fff", opacity: left === 0 ? 0.55 : 1, cursor: left === 0 ? "not-allowed" : "pointer" }}>
+                          <strong style={{ display: "block", color: "#0F332B", fontSize: "14px" }}>{formatDateShort(s.date)}</strong>
+                          <span style={{ fontSize: "12px", color: "#2F3328" }}>{formatTime12(s.startTime)} · {left === 0 ? "Sold out" : left <= 10 ? `${left} left` : "Available"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
               {/* Quick facts */}
               <div style={{ backgroundColor: "#EEE2D5", borderRadius: "16px", padding: "20px 24px" }} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  { icon: <Calendar size={16} style={{ color: "#C9A25F" }} />, label: "Date", value: formatDate(bookingEvent.date) },
-                  { icon: <Clock size={16} style={{ color: "#C9A25F" }} />, label: "Time", value: `${bookingEvent.startTime} — ${bookingEvent.endTime}` },
+                  { icon: <Calendar size={16} style={{ color: "#C9A25F" }} />, label: "Date", value: shown ? `${formatDate(shown.date)}${upcoming.length > 1 ? ` (+${upcoming.length - 1} more)` : ""}` : "No upcoming dates" },
+                  { icon: <Clock size={16} style={{ color: "#C9A25F" }} />, label: "Time", value: shown ? `${formatTime12(shown.startTime)} — ${formatTime12(shown.endTime)} IST` : "—" },
                   { icon: <MapPin size={16} style={{ color: "#C9A25F" }} />, label: "Venue", value: event.location },
                 ].map((f) => (
                   <div key={f.label} style={{ display: "flex", gap: "10px" }}>
@@ -143,7 +165,7 @@ export default function EventDetailsPage() {
       {/* Sticky bottom bar */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, backgroundColor: "#FBF4E8", borderTop: "1px solid #EEE2D5", padding: "14px 40px", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 50, backdropFilter: "blur(8px)" }}>
         <button onClick={() => !isSoldOut && setModalOpen(true)} disabled={isSoldOut} style={{ backgroundColor: isSoldOut ? "#EEE2D5" : "#0F332B", color: isSoldOut ? "#2F3328" : "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "14px 48px", cursor: isSoldOut ? "not-allowed" : "pointer" }}>
-          {!selected ? "NO UPCOMING DATES" : isSoldOut ? "SOLD OUT" : "RESERVE A SEAT"}
+          {!upcoming.length ? "NO UPCOMING DATES" : isSoldOut ? "SOLD OUT" : "RESERVE A SEAT"}
         </button>
       </div>
 
@@ -170,7 +192,7 @@ export default function EventDetailsPage() {
         </div>
       )}
 
-      <BookingModal key={selected?.id ?? event.id} event={bookingEvent} open={modalOpen} onOpenChange={setModalOpen} />
+      {preview && event.status !== "published" ? null : <BookingModal key={event.id} event={event} open={modalOpen} onOpenChange={setModalOpen} onBooked={reloadEvent} />}
     </div>
   );
 }

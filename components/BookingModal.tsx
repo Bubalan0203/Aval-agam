@@ -1,386 +1,398 @@
 "use client";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { X, CheckCircle2, AlertCircle, User, Mail, Phone, Ticket, CreditCard, Zap } from "lucide-react";
-import emailjs from "@emailjs/browser";
-import { createBooking } from "@/lib/firestore";
-import type { Event } from "@/lib/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, ArrowLeft, Calendar, CheckCircle2, Clock, MapPin, Minus, Plus, X } from "lucide-react";
+import { BookingError, checkAvailability, createBooking, markConfirmationEmailSent, type Event } from "@/lib/firestore";
+import { sendConfirmationEmail } from "@/lib/email";
+import { formatDateLong, formatDateShort, formatTime12, maxQuantity, rupees, sessionRemaining, ticketRemaining, upcomingSessions } from "@/lib/booking-logic";
 
-const EMAILJS_SERVICE_ID  = "service_ccmza7t";
-const EMAILJS_TEMPLATE_ID = "template_ro58gnx";
-const EMAILJS_PUBLIC_KEY  = "F8QjNtOzTSS8DVitl";
+type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void; onBooked?: () => void };
+type Step = "date" | "tickets" | "details" | "review" | "success" | "refund" | "error";
 
-type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void };
-type Step = "form" | "success" | "error";
+const G = "#0F332B", CREAM = "#FBF4E8", SAND = "#EEE2D5", GOLD = "#C9A25F", CLAY = "#C8734F", INK = "#2F3328";
+const WHATSAPP = "https://wa.me/919952697993";
 
-const PAYMENT_METHODS = [
-  { id: "razorpay", label: "Razorpay", Icon: Zap,        disabled: false },
-  { id: "stripe",   label: "Stripe",   Icon: CreditCard, disabled: true  },
-];
-
-// Loads Razorpay's checkout.js once and reuses it afterwards. The promise is cached at
-// module level so two overlapping calls share one <script> tag instead of racing.
+// Loads Razorpay's checkout.js once; overlapping calls share one <script> tag.
 let razorpayScriptPromise: Promise<boolean> | null = null;
-
 function loadRazorpayScript(): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
   if ((window as unknown as { Razorpay?: unknown }).Razorpay) return Promise.resolve(true);
   if (razorpayScriptPromise) return razorpayScriptPromise;
-
   razorpayScriptPromise = new Promise<boolean>((resolve) => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
     script.onload = () => resolve(true);
-    script.onerror = () => {
-      razorpayScriptPromise = null; // let the next attempt retry
-      resolve(false);
-    };
+    script.onerror = () => { razorpayScriptPromise = null; resolve(false); };
     document.body.appendChild(script);
   });
   return razorpayScriptPromise;
 }
 
-export function BookingModal({ event, open, onOpenChange }: Props) {
-  const router = useRouter();
-  const [step, setStep] = useState<Step>("form");
-  // Pre-select the first ticket that still has seats, not just the first one
-  const firstAvailable = event.ticketTypes.find(t => t.sold < t.available) ?? event.ticketTypes[0];
-  const [form, setForm] = useState({ name: "", email: "", phone: "", ticketTypeId: firstAvailable?.id ?? "", quantity: 1, paymentMethod: "razorpay" });
-  // Both must be ticked before payment can be started
+const STEPS: { id: Step; label: string }[] = [
+  { id: "date", label: "Date" }, { id: "tickets", label: "Tickets" }, { id: "details", label: "Details" }, { id: "review", label: "Pay" },
+];
+
+export function BookingModal({ event, open, onOpenChange, onBooked }: Props) {
+  const sessions = useMemo(() => upcomingSessions(event), [event]);
+  const singleDate = sessions.length === 1;
+  const firstStep: Step = singleDate ? "tickets" : "date";
+
+  const [step, setStep] = useState<Step>(firstStep);
+  const [sessionId, setSessionId] = useState(singleDate ? sessions[0].id : "");
+  const [ticketTypeId, setTicketTypeId] = useState(() => singleDate ? event.ticketTypes.find(t => ticketRemaining(t, sessions[0]) > 0)?.id ?? "" : "");
+  const [quantity, setQuantity] = useState(1);
+  const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [consent, setConsent] = useState({ terms: false, workshop: false });
-  const [errors, setErrors]     = useState<Record<string, string>>({});
-  const [sending, setSending]   = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  // While the Razorpay window is open, our dialog must release its focus trap
-  // so the user can type inside the payment form
+  const [result, setResult] = useState<{ id: string; emailed: boolean } | null>(null);
+  // Radix modal mode blocks clicks on Razorpay's iframe; release it while checkout is open.
   const [payWindowOpen, setPayWindowOpen] = useState(false);
-  const [busyLabel, setBusyLabel] = useState("Confirming your booking…");
 
-  // Warm up checkout.js as soon as the modal opens, so the round-trip to Razorpay's CDN
-  // happens while the user is still filling the form rather than after they press Pay.
-  useEffect(() => {
-    if (open) void loadRazorpayScript();
-  }, [open]);
+  const session = sessions.find(s => s.id === sessionId);
+  const ticket = event.ticketTypes.find(t => t.id === ticketTypeId);
+  const maxQty = ticket && session ? maxQuantity(ticket, session) : 0;
+  const total = (ticket?.price ?? 0) * quantity;
 
-  const selectedTicket = event.ticketTypes.find((t) => t.id === form.ticketTypeId);
-  const remaining = selectedTicket ? Math.max(0, selectedTicket.available - selectedTicket.sold) : 0;
-  const maxQty = Math.min(10, remaining);
-  const total = (selectedTicket?.price ?? 0) * form.quantity;
+  useEffect(() => { if (open) void loadRazorpayScript(); }, [open]);
 
-  function clearError(key: string) {
-    setErrors((prev) => {
-      if (!(key in prev)) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+  // Choosing a date keeps the current ticket if it still has seats, otherwise picks the first available.
+  function chooseSession(id: string) {
+    const s = sessions.find(x => x.id === id);
+    setSessionId(id);
+    if (!s) return;
+    const current = event.ticketTypes.find(t => t.id === ticketTypeId && ticketRemaining(t, s) > 0)
+      ?? event.ticketTypes.find(t => ticketRemaining(t, s) > 0);
+    setTicketTypeId(current?.id ?? "");
+    setQuantity(q => Math.max(1, Math.min(q, current ? maxQuantity(current, s) : 1)));
   }
 
-  function validate() {
+  function reset() {
+    setStep(firstStep); if (singleDate) chooseSession(sessions[0].id); else setSessionId(""); setQuantity(1);
+    setErrors({}); setNotice(""); setErrorMsg(""); setResult(null); setConsent({ terms: false, workshop: false });
+  }
+
+  function validateDetails() {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = "Name is required";
-    if (!form.email.trim() || !/^[^@]+@[^@]+\.[^@]+$/.test(form.email)) e.email = "Valid email required";
-    if (!/^\d{10}$/.test(form.phone.replace(/[\s\-+]/g, "").replace(/^91/, "").replace(/^0/, ""))) e.phone = "Valid 10-digit phone required";
-    if (!consent.terms)    e.terms    = "Please accept the Terms & Conditions to continue";
+    if (!form.name.trim()) e.name = "Enter your name";
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) e.email = "Enter a valid email";
+    if (!/^\d{10}$/.test(form.phone.replace(/[\s\-+]/g, "").replace(/^91(?=\d{10}$)/, "").replace(/^0(?=\d{10}$)/, ""))) e.phone = "Enter a 10-digit mobile number";
+    setErrors(e);
+    return !Object.keys(e).length;
+  }
+
+  function validateConsent() {
+    const e: Record<string, string> = {};
+    if (!consent.terms) e.terms = "Please accept the Terms & Conditions";
     if (!consent.workshop) e.workshop = "Please confirm you understand the session format and fee policy";
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return !Object.keys(e).length;
   }
 
-  /** Opens Razorpay checkout; resolves with the payment id once verified, null if cancelled */
+  /** Opens Razorpay; resolves with the verified payment id, or null if the customer closed it. */
   async function collectPayment(): Promise<string | null> {
-    // The script download and the order creation don't depend on each other — awaiting
-    // them one after the other just adds the two latencies together before the payment
-    // window can appear, so run both at once.
     const orderReq = (async () => {
       const res = await fetch("/api/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: total, receipt: `evt_${event.id.slice(0, 12)}_${Date.now()}` }),
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) throw new Error("ORDER_FAILED");
       return res.json() as Promise<{ orderId: string }>;
     })();
-
     const [loaded, { orderId }] = await Promise.all([loadRazorpayScript(), orderReq]);
     if (!loaded) throw new Error("PAYMENT_LOAD_FAILED");
-
     return new Promise((resolve, reject) => {
       const RazorpayCtor = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void; on: (ev: string, cb: (r: unknown) => void) => void } }).Razorpay;
-      // Every exit path must put the dialog back into modal mode, otherwise it stays
-      // dismissable-on-outside-click after the payment window is gone.
-      const settle = (fn: () => void) => {
-        setPayWindowOpen(false);
-        fn();
-      };
+      const settle = (fn: () => void) => { setPayWindowOpen(false); fn(); };
       const rzp = new RazorpayCtor({
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         order_id: orderId,
         name: "Aval Agam",
-        description: event.title,
+        description: `${event.title} · ${session ? formatDateShort(session.date) : ""}`,
         prefill: { name: form.name, email: form.email, contact: form.phone },
-        theme: { color: "#0F332B" },
+        theme: { color: G },
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
-            const verifyRes = await fetch("/api/verify-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(response),
-            });
+            const verifyRes = await fetch("/api/verify-payment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(response) });
             const data = await verifyRes.json();
-            if (data.verified) settle(() => resolve(response.razorpay_payment_id));
-            else settle(() => reject(new Error("VERIFY_FAILED")));
-          } catch {
-            settle(() => reject(new Error("VERIFY_FAILED")));
-          }
+            settle(() => data.verified ? resolve(response.razorpay_payment_id) : reject(new Error("VERIFY_FAILED")));
+          } catch { settle(() => reject(new Error("VERIFY_FAILED"))); }
         },
         modal: { ondismiss: () => settle(() => resolve(null)) },
       });
       rzp.on("payment.failed", () => settle(() => reject(new Error("PAYMENT_FAILED"))));
-
-      // Radix's modal Dialog sets `pointer-events: none` on <body> and re-enables it only
-      // inside its own portal. Razorpay mounts checkout as a direct child of <body>, so it
-      // inherits that and every click falls straight through to the form behind it — the
-      // window looks live but nothing is clickable. Leave modal mode while it's up.
       setPayWindowOpen(true);
       rzp.open();
     });
   }
 
-  async function handlePay() {
-    if (sending || !validate()) return;
-    setSending(true);
-    setErrorMsg("");
-    setBusyLabel(total > 0 ? "Opening secure payment…" : "Confirming your booking…");
+  async function confirmAndPay() {
+    if (busy || !validateConsent() || !session || !ticket) return;
+    setNotice("");
+    // 1. Re-check seats so nobody pays for seats that are gone.
+    setBusy("Checking seats…");
+    try { await checkAvailability(event.id, session.id, ticket.id, quantity); }
+    catch (err) {
+      setBusy("");
+      setNotice(err instanceof BookingError ? `${err.message} Please choose another option.` : "We couldn't reach the server. Check your connection and try again.");
+      setStep(err instanceof BookingError && err.code === "DATE_UNAVAILABLE" && !singleDate ? "date" : "tickets");
+      onBooked?.();
+      return;
+    }
 
-    // 1. Collect payment first for paid tickets
-    let paymentId: string | null = null;
+    // 2. Payment (paid tickets only).
+    let paymentId: string | undefined;
     if (total > 0) {
+      setBusy("Opening secure payment…");
       try {
-        paymentId = await collectPayment();
-        setBusyLabel("Confirming your booking…");
-        if (paymentId === null) { setSending(false); return; } // user closed the payment window
+        const id = await collectPayment();
+        if (!id) { setBusy(""); setNotice("Payment window closed. Your details are saved — you can pay when ready."); return; }
+        paymentId = id;
       } catch (err) {
         const code = err instanceof Error ? err.message : "";
-        setErrorMsg(
-          code === "PAYMENT_FAILED" ? "Your payment could not be completed. No money was deducted — please try again."
-          : code === "VERIFY_FAILED" ? "We couldn't verify your payment. If money was deducted, please contact us on WhatsApp."
-          : "We couldn't start the payment. Please check your connection and try again.");
-        setSending(false);
+        setBusy("");
+        if (code === "PAYMENT_FAILED") { setNotice("Your payment didn't go through and no money was taken. Please try again."); return; }
+        setErrorMsg(code === "VERIFY_FAILED"
+          ? "We couldn't verify your payment. If money was deducted, contact us with your payment receipt and we'll sort it out."
+          : "We couldn't start the payment. Check your connection and try again.");
         setStep("error");
         return;
       }
     }
 
+    // 3. Save the booking (takes seats atomically).
+    setBusy("Confirming your booking…");
     try {
-      // 2. Save the booking (atomic — fails if seats ran out)
-      await createBooking({
-        eventId:      event.id,
-        sessionId: event.selectedSessionId ?? "legacy",
-        eventTitle:   event.title,
-        name:         form.name,
-        email:        form.email,
-        phone:        form.phone,
-        ticketType:   selectedTicket?.name ?? "",
-        ticketTypeId: form.ticketTypeId,
-        quantity:     form.quantity,
-        amount:       total,
-        paymentMethod: total > 0 ? "razorpay" : "free",
-        ...(paymentId ? { paymentId } : {}),
+      const { id, booking } = await createBooking({
+        eventId: event.id, sessionId: session.id, ticketTypeId: ticket.id, quantity,
+        name: form.name, email: form.email, phone: form.phone,
+        paymentMethod: total > 0 ? "razorpay" : "free", paymentId, amount: total, source: "website",
       });
+      if (booking.status !== "confirmed") { setResult({ id, emailed: false }); setStep("refund"); return; }
+      // 4. Email — the booking is already saved, so a failure here is not fatal.
+      let emailed = false;
+      try {
+        await sendConfirmationEmail({ bookingId: id, name: booking.name, email: booking.email, phone: booking.phone, eventTitle: event.title, date: session.date, startTime: session.startTime, endTime: session.endTime, venue: event.location, ticketType: ticket.name, quantity, amount: total });
+        await markConfirmationEmailSent(id);
+        emailed = true;
+      } catch (e) { console.error("Confirmation email failed (booking saved):", e); }
+      setResult({ id, emailed });
+      setStep("success");
     } catch (err) {
-      const code = err instanceof Error ? err.message : "";
-      setErrorMsg(code === "SOLD_OUT"
-        ? "Sorry, not enough seats are left for this ticket. If you completed a payment, contact us on WhatsApp for a refund."
-        : "We couldn't complete your booking. If you completed a payment, contact us on WhatsApp.");
-      setSending(false);
-      setStep("error");
-      return;
+      // Only reached for free bookings (paid ones are always recorded).
+      setNotice(err instanceof BookingError ? `${err.message} Please choose another option.` : "We couldn't complete your booking. Please try again.");
+      setStep("tickets");
+    } finally {
+      setBusy("");
+      onBooked?.();
     }
+  }
 
-    // 3. Send the email — booking is already saved, so a mail failure is not fatal
-    try {
-      await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          customer_name:  form.name,
-          customer_email: form.email,
-          customer_phone: form.phone,
-          event_title:    event.title,
-          event_date:     new Date(event.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-          event_time:     `${event.startTime} — ${event.endTime}`,
-          event_venue:    event.location,
-          ticket_type:    selectedTicket?.name ?? "",
-          quantity:       String(form.quantity),
-          amount:         total === 0 ? "Free" : `₹${total.toLocaleString()}`,
-          to_email:       form.email,
-        },
-        EMAILJS_PUBLIC_KEY
-      );
-    } catch (err) {
-      console.error("EmailJS error (booking already saved):", err);
-    }
-    setSending(false);
-    setStep("success");
+  function handleClose(v: boolean) {
+    if (v || payWindowOpen || busy) return;
+    onOpenChange(false);
+    if (step === "success" || step === "refund" || step === "error") setTimeout(reset, 300);
   }
-  function handleClose() {
-    // Non-modal mode lets outside clicks reach us; ignore them while Razorpay is up so a
-    // tap on its backdrop can't tear this dialog down mid-payment.
-    if (payWindowOpen) return;
-    if (step === "success") {
-      onOpenChange(false);
-      router.push("/");
-    } else {
-      onOpenChange(false);
-      setTimeout(() => { setStep("form"); setErrors({}); setConsent({ terms: false, workshop: false }); }, 300);
-    }
+
+  function next() {
+    setNotice("");
+    if (step === "date" && session) setStep("tickets");
+    else if (step === "tickets" && ticket && quantity >= 1 && quantity <= maxQty) setStep("details");
+    else if (step === "details" && validateDetails()) setStep("review");
   }
+  function back() {
+    setNotice(""); setErrors({});
+    const order: Step[] = singleDate ? ["tickets", "details", "review"] : ["date", "tickets", "details", "review"];
+    const i = order.indexOf(step);
+    if (i > 0) setStep(order[i - 1]);
+  }
+
+  const flowStep = STEPS.findIndex(s => s.id === step);
+  const visibleSteps = singleDate ? STEPS.slice(1) : STEPS;
+  const canNext = step === "date" ? !!session : step === "tickets" ? !!ticket && maxQty > 0 : true;
+  const calendarUrl = session ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&dates=${session.date.replace(/-/g, "")}T${session.startTime.replace(":", "")}00/${session.date.replace(/-/g, "")}T${session.endTime.replace(":", "")}00&ctz=Asia/Kolkata&location=${encodeURIComponent(event.location)}` : "";
 
   return (
     <Dialog.Root open={open} onOpenChange={handleClose} modal={!payWindowOpen}>
       <Dialog.Portal>
         <Dialog.Overlay style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,51,43,0.45)", zIndex: 50, backdropFilter: "blur(4px)" }} />
         <Dialog.Content
-          onInteractOutside={(e) => { if (payWindowOpen) e.preventDefault(); }}
-          onEscapeKeyDown={(e) => { if (payWindowOpen) e.preventDefault(); }}
-          style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: "#FBF4E8", borderRadius: "20px", padding: "0", width: "min(560px, 95vw)", maxHeight: "90vh", overflowY: "auto", zIndex: 51, boxShadow: "0 20px 60px rgba(15,51,43,0.25)" }}>
-          <div style={{ position: "relative" }}>
-          {step === "success" ? (
-            <div style={{ padding: "48px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-              <CheckCircle2 size={56} style={{ color: "#0F332B" }} />
-              <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "26px", fontWeight: 700 }}>Booking Confirmed!</h2>
-              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "15px", lineHeight: 1.7 }}>Your booking is saved. Check <strong>{form.email}</strong> for the confirmation; contact us if it does not arrive.</p>
-              <div style={{ backgroundColor: "#EEE2D5", borderRadius: "12px", padding: "20px 24px", width: "100%", marginTop: "8px", textAlign: "left" }}>
-                <p style={{ fontFamily: "Poppins, sans-serif", color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "14px" }}>Booking Summary</p>
-                {[["Event", event.title], ["Date", event.date], ["Time", `${event.startTime}–${event.endTime} IST`], ["Name", form.name], ["Email", form.email], ["Ticket", selectedTicket?.name ?? "—"], ["Quantity", String(form.quantity)], ...(total > 0 ? [["Payment", PAYMENT_METHODS.find(p => p.id === form.paymentMethod)?.label ?? "—"]] : []), ["Total Paid", total === 0 ? "Free" : `₹${total.toLocaleString()}`]].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "13px", opacity: 0.7 }}>{k}</span>
-                    <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "13px", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{v}</span>
-                  </div>
-                ))}
+          onInteractOutside={e => { if (payWindowOpen || busy) e.preventDefault(); }}
+          onEscapeKeyDown={e => { if (payWindowOpen || busy) e.preventDefault(); }}
+          className="booking-modal"
+          style={{ position: "fixed", backgroundColor: CREAM, zIndex: 51, display: "flex", flexDirection: "column", fontFamily: "Poppins, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+          <style>{`
+            .booking-modal { left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 20px 20px 0 0; }
+            @media (min-width: 640px) { .booking-modal { left: 50%; right: auto; bottom: auto; top: 50%; transform: translate(-50%, -50%); width: min(560px, 95vw); max-height: 90vh; border-radius: 20px; } }
+            @keyframes spin { to { transform: rotate(360deg); } }
+          `}</style>
+
+          {/* Header */}
+          <div style={{ padding: "20px 24px 14px", borderBottom: `1px solid ${SAND}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ color: GOLD, fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600 }}>Reserve a seat</p>
+                <Dialog.Title style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 19, fontWeight: 700, lineHeight: 1.3 }}>{event.title}</Dialog.Title>
               </div>
-              <button onClick={handleClose} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "13px 32px", cursor: "pointer" }}>BACK TO HOME</button>
+              <Dialog.Close asChild><button aria-label="Close" disabled={!!busy || payWindowOpen} style={{ color: INK, opacity: 0.5, alignSelf: "flex-start" }}><X size={20} /></button></Dialog.Close>
             </div>
-          ) : step === "error" ? (
-            <div style={{ padding: "48px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-              <AlertCircle size={56} style={{ color: "#C8734F" }} />
-              <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px", fontWeight: 700 }}>Something went wrong</h2>
-              <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", lineHeight: 1.7, maxWidth: "340px" }}>{errorMsg || "We couldn't complete your booking. Please try again."}</p>
-              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-                <button onClick={() => setStep("form")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", border: "none", borderRadius: "9999px", padding: "13px 28px", cursor: "pointer" }}>TRY AGAIN</button>
-                <button onClick={handleClose} style={{ backgroundColor: "transparent", color: "#2F3328", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "1.5px solid #EEE2D5", borderRadius: "9999px", padding: "13px 28px", cursor: "pointer" }}>CLOSE</button>
+            <Dialog.Description className="sr-only">Choose a date, tickets and pay to book {event.title}.</Dialog.Description>
+            {flowStep >= 0 && (
+              <ol style={{ display: "flex", gap: 6, marginTop: 14 }}>
+                {visibleSteps.map((s) => {
+                  const idx = STEPS.findIndex(x => x.id === s.id);
+                  const done = idx < flowStep, active = idx === flowStep;
+                  return (
+                    <li key={s.id} style={{ flex: 1 }}>
+                      <div style={{ height: 4, borderRadius: 999, background: done || active ? G : SAND }} />
+                      <span style={{ fontSize: 11, color: active ? G : INK, opacity: active ? 1 : 0.55, fontWeight: active ? 600 : 400 }}>{s.label}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: "18px 24px", overflowY: "auto", flex: 1, position: "relative" }}>
+            {busy && (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(251,244,232,0.88)", zIndex: 5, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", border: `3px solid ${SAND}`, borderTopColor: G, animation: "spin 0.8s linear infinite" }} />
+                <p style={{ color: G, fontSize: 14, fontWeight: 600 }}>{busy}</p>
               </div>
-            </div>
-          ) : (
-            <>
-              {sending && (
-                <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(251,244,232,0.85)", borderRadius: "20px", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "14px" }}>
-                  <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: "3px solid #EEE2D5", borderTopColor: "#0F332B", animation: "spin 0.8s linear infinite" }} />
-                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: 600 }}>{busyLabel}</p>
-                  <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                </div>
-              )}
-              <div style={{ padding: "28px 32px 20px", borderBottom: "1px solid #EEE2D5", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
-                <div>
-                  <p style={{ fontFamily: "Poppins, sans-serif", color: "#C9A25F", fontSize: "11px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 600, marginBottom: "4px" }}>Reserve a Seat</p>
-                  <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "20px", fontWeight: 700, lineHeight: 1.3 }}>{event.title}</h2>
-                </div>
-                <Dialog.Close asChild>
-                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "#2F3328", opacity: 0.5, flexShrink: 0 }}><X size={20} /></button>
-                </Dialog.Close>
+            )}
+            {notice && <p role="alert" style={{ background: "#FDE8D5", color: "#8B3516", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>{notice}</p>}
+
+            {step === "date" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ fontSize: 13, color: INK, marginBottom: 4 }}>Choose a date</p>
+                {sessions.map(s => {
+                  const left = sessionRemaining(event, s);
+                  const selected = s.id === sessionId;
+                  return (
+                    <button key={s.id} type="button" disabled={left === 0} onClick={() => chooseSession(s.id)}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, textAlign: "left", padding: "12px 16px", borderRadius: 12, background: selected ? "#fff" : left === 0 ? SAND : "#fff", border: `1.5px solid ${selected ? G : SAND}`, opacity: left === 0 ? 0.6 : 1, cursor: left === 0 ? "not-allowed" : "pointer" }}>
+                      <span>
+                        <span style={{ display: "block", fontWeight: 600, color: G, fontSize: 14 }}>{formatDateLong(s.date)}</span>
+                        <span style={{ fontSize: 12, color: INK, opacity: 0.7 }}>{formatTime12(s.startTime)} – {formatTime12(s.endTime)} IST</span>
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: left === 0 ? INK : left <= 10 ? CLAY : G, whiteSpace: "nowrap" }}>{left === 0 ? "Sold out" : left <= 10 ? `${left} left` : "Available"}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <p style={{ padding: "16px 32px 0", fontWeight: 600 }}>{event.date} · {event.startTime}–{event.endTime} IST</p>
-              <div style={{ padding: "24px 32px 32px", display: "flex", flexDirection: "column", gap: "18px" }}>
-                <Field label="Full Name" icon={<User size={14} />} error={errors.name}>
-                  <input type="text" placeholder="Your full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle(!!errors.name)} />
-                </Field>
-                <Field label="Email Address" icon={<Mail size={14} />} error={errors.email}>
-                  <input type="email" placeholder="you@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle(!!errors.email)} />
-                </Field>
-                <Field label="Phone Number" icon={<Phone size={14} />} error={errors.phone}>
-                  <input type="tel" placeholder="10-digit mobile number" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={inputStyle(!!errors.phone)} />
-                </Field>
-                <Field label="Ticket Type" icon={<Ticket size={14} />}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {event.ticketTypes.map((tt) => {
-                      const soldOut = tt.sold >= tt.available;
-                      const selected = form.ticketTypeId === tt.id;
-                      return (
-                        <label key={tt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: "10px", cursor: soldOut ? "not-allowed" : "pointer", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", opacity: soldOut ? 0.5 : 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <input type="radio" name="ticketType" value={tt.id} checked={selected} disabled={soldOut} onChange={() => !soldOut && setForm({ ...form, ticketTypeId: tt.id, quantity: Math.min(form.quantity, Math.max(1, tt.available - tt.sold)) })} style={{ accentColor: "#0F332B" }} />
-                            <span style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "14px", fontWeight: selected ? 600 : 400 }}>{tt.name}{soldOut && <span style={{ color: "#C8734F", fontSize: "11px", marginLeft: "8px" }}> Sold Out</span>}</span>
-                          </div>
-                          <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "14px", fontWeight: 700 }}>{tt.price === 0 ? "Free" : `₹${tt.price}`}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </Field>
-                <Field label="Number of Tickets">
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <button onClick={() => setForm({ ...form, quantity: Math.max(1, form.quantity - 1) })} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #EEE2D5", background: "#fff", cursor: "pointer", fontSize: "18px", color: "#0F332B", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-                    <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "16px", fontWeight: 600, color: "#0F332B", minWidth: "24px", textAlign: "center" }}>{form.quantity}</span>
-                    <button onClick={() => setForm({ ...form, quantity: Math.min(maxQty, form.quantity + 1) })} disabled={form.quantity >= maxQty} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #EEE2D5", background: "#fff", cursor: form.quantity >= maxQty ? "not-allowed" : "pointer", fontSize: "18px", color: "#0F332B", display: "flex", alignItems: "center", justifyContent: "center", opacity: form.quantity >= maxQty ? 0.4 : 1 }}>+</button>
-                    {remaining > 0 && remaining <= 10 && (
-                      <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "12px", color: "#C8734F", fontWeight: 500 }}>Only {remaining} seat{remaining > 1 ? "s" : ""} left</span>
-                    )}
-                  </div>
-                </Field>
-                {total > 0 && (
-                  <Field label="Payment Method" icon={<CreditCard size={14} />}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
-                      {PAYMENT_METHODS.map(({ id, label, Icon, disabled }) => {
-                        const selected = form.paymentMethod === id;
-                        return (
-                          <button key={id} type="button" disabled={disabled} onClick={() => !disabled && setForm({ ...form, paymentMethod: id })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", padding: "12px 6px", borderRadius: "10px", border: `1.5px solid ${selected ? "#0F332B" : "#EEE2D5"}`, backgroundColor: selected ? "rgba(15,51,43,0.05)" : "#ffffff", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1 }}>
-                            <Icon size={18} style={{ color: selected ? "#0F332B" : "#C9A25F" }} />
-                            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: "11px", fontWeight: selected ? 600 : 400, color: "#0F332B", whiteSpace: "nowrap" }}>{label}{disabled ? " · Coming soon" : ""}</span>
-                          </button>
-                        );
-                      })}
+            )}
+
+            {step === "tickets" && session && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <SessionLine session={session} venue={event.location} onChange={singleDate ? undefined : () => setStep("date")} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {event.ticketTypes.map(t => {
+                    const left = ticketRemaining(t, session);
+                    const selected = t.id === ticketTypeId;
+                    return (
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", borderRadius: 12, background: "#fff", border: `1.5px solid ${selected ? G : SAND}`, opacity: left === 0 ? 0.55 : 1, cursor: left === 0 ? "not-allowed" : "pointer" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <input type="radio" name="ticket" checked={selected} disabled={left === 0} onChange={() => { setTicketTypeId(t.id); setQuantity(q => Math.min(q, maxQuantity(t, session)) || 1); }} style={{ accentColor: G }} />
+                          <span><span style={{ display: "block", fontSize: 14, fontWeight: 600, color: G }}>{t.name}</span><span style={{ fontSize: 11, color: left === 0 ? CLAY : INK, opacity: left === 0 ? 1 : 0.6 }}>{left === 0 ? "Sold out" : left <= 10 ? `Only ${left} left` : `${left} available`}</span></span>
+                        </span>
+                        <span style={{ fontWeight: 700, color: CLAY }}>{rupees(t.price)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {ticket && maxQty > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>Number of tickets</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <RoundBtn label="Fewer" disabled={quantity <= 1} onClick={() => setQuantity(q => q - 1)}><Minus size={14} /></RoundBtn>
+                      <span style={{ minWidth: 20, textAlign: "center", fontWeight: 600, color: G }}>{quantity}</span>
+                      <RoundBtn label="More" disabled={quantity >= maxQty} onClick={() => setQuantity(q => q + 1)}><Plus size={14} /></RoundBtn>
                     </div>
-                  </Field>
+                  </div>
                 )}
-                <div style={{ backgroundColor: "#EEE2D5", borderRadius: "12px", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px" }}>Total Amount</span>
-                  <span style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>{total === 0 ? "Free" : `₹${total.toLocaleString()}`}</span>
-                </div>
-
-                {/* Mandatory consent — both boxes must be ticked before payment */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <Consent
-                    checked={consent.terms}
-                    error={errors.terms}
-                    onChange={(v) => { setConsent((c) => ({ ...c, terms: v })); clearError("terms"); }}
-                  >
-                    I have read and agree to the Aval Agam&rsquo;s{" "}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", fontWeight: 600, textDecoration: "underline" }}>
-                      Terms &amp; Conditions
-                    </a>
-                    .
-                  </Consent>
-                  <Consent
-                    checked={consent.workshop}
-                    error={errors.workshop}
-                    onChange={(v) => { setConsent((c) => ({ ...c, workshop: v })); clearError("workshop"); }}
-                  >
-                    I understand that this is a live, non-clinical emotional wellness workshop, the fee is
-                    non-refundable and non-transferable, no recording or replay will be provided, and no
-                    recordings of the session are allowed by the participants.
-                  </Consent>
-                </div>
-
-                <button onClick={handlePay} disabled={sending || !consent.terms || !consent.workshop} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "16px", cursor: sending || !consent.terms || !consent.workshop ? "not-allowed" : "pointer", textTransform: "uppercase", opacity: sending || !consent.terms || !consent.workshop ? 0.55 : 1, transition: "opacity 0.15s" }}>
-                  {sending ? "PLEASE WAIT…" : total === 0 ? "CONFIRM RESERVATION" : `PAY ₹${total.toLocaleString()}`}
-                </button>
               </div>
-            </>
-          )}
+            )}
+
+            {step === "details" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Input label="Full name" value={form.name} error={errors.name} autoComplete="name" onChange={v => setForm({ ...form, name: v })} />
+                <Input label="Email" type="email" value={form.email} error={errors.email} autoComplete="email" onChange={v => setForm({ ...form, email: v })} hint="Your confirmation is sent here." />
+                <Input label="Mobile number" type="tel" value={form.phone} error={errors.phone} autoComplete="tel" onChange={v => setForm({ ...form, phone: v })} />
+              </div>
+            )}
+
+            {step === "review" && session && ticket && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Summary rows={[
+                  ["Date", `${formatDateShort(session.date)} · ${formatTime12(session.startTime)}`],
+                  ["Venue", event.location],
+                  ["Tickets", `${quantity} × ${ticket.name}`],
+                  ["Name", form.name], ["Email", form.email], ["Mobile", form.phone],
+                ]} total={total} />
+                <Consent checked={consent.terms} error={errors.terms} onChange={v => setConsent(c => ({ ...c, terms: v }))}>
+                  I have read and agree to Aval Agam&rsquo;s <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: CLAY, fontWeight: 600, textDecoration: "underline" }}>Terms &amp; Conditions</a>.
+                </Consent>
+                <Consent checked={consent.workshop} error={errors.workshop} onChange={v => setConsent(c => ({ ...c, workshop: v }))}>
+                  I understand that this is a live, non-clinical emotional wellness workshop, the fee is non-refundable and non-transferable, no recording or replay will be provided, and no recordings of the session are allowed by the participants.
+                </Consent>
+              </div>
+            )}
+
+            {step === "success" && session && ticket && result && (
+              <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <CheckCircle2 size={52} color={G} />
+                <h2 style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 24, fontWeight: 700 }}>You&rsquo;re booked!</h2>
+                <p style={{ fontSize: 14, color: INK }}>{result.emailed ? <>A confirmation was sent to <strong>{form.email}</strong>.</> : <>Your booking is saved. We couldn&rsquo;t send the email right now — please save your booking ID.</>}</p>
+                <Summary rows={[["Booking ID", result.id], ["Date", `${formatDateShort(session.date)} · ${formatTime12(session.startTime)}`], ["Venue", event.location], ["Tickets", `${quantity} × ${ticket.name}`]]} total={total} />
+                <a href={calendarUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: CLAY, fontWeight: 600, textDecoration: "underline" }}>Add to Google Calendar</a>
+              </div>
+            )}
+
+            {step === "refund" && result && (
+              <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <AlertCircle size={52} color={CLAY} />
+                <h2 style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 22, fontWeight: 700 }}>Seats ran out while you were paying</h2>
+                <p style={{ fontSize: 14, color: INK, lineHeight: 1.7 }}>We&rsquo;re sorry. Your payment of <strong>{rupees(total)}</strong> was received and recorded. Our team will refund it in full — you don&rsquo;t need to do anything. Reference: <strong>{result.id}</strong>.</p>
+              </div>
+            )}
+
+            {step === "error" && (
+              <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <AlertCircle size={52} color={CLAY} />
+                <h2 style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 22, fontWeight: 700 }}>Something went wrong</h2>
+                <p style={{ fontSize: 14, color: INK, lineHeight: 1.7 }}>{errorMsg}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: "14px 24px 18px", borderTop: `1px solid ${SAND}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            {["date", "tickets", "details", "review"].includes(step) ? (
+              <>
+                <div>
+                  {step !== firstStep ? <button type="button" onClick={back} disabled={!!busy} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: INK }}><ArrowLeft size={14} /> Back</button>
+                    : ticket && step !== "date" ? <span style={{ fontSize: 13, color: INK }}>Total <strong style={{ color: G }}>{rupees(total)}</strong></span> : <span />}
+                </div>
+                {step === "review"
+                  ? <Primary onClick={confirmAndPay} disabled={!!busy}>{total === 0 ? "Confirm booking" : `Pay ${rupees(total)}`}</Primary>
+                  : <Primary onClick={next} disabled={!canNext}>{step === "tickets" && ticket ? `Continue · ${rupees(total)}` : "Continue"}</Primary>}
+              </>
+            ) : step === "error" ? (
+              <>
+                <button type="button" onClick={() => handleClose(false)} style={{ fontSize: 13, color: INK }}>Close</button>
+                <Primary onClick={() => { setErrorMsg(""); setStep("review"); }}>Try again</Primary>
+              </>
+            ) : (
+              <>
+                <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: INK, textDecoration: "underline" }}>Need help?</a>
+                <Primary onClick={() => handleClose(false)}>Done</Primary>
+              </>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -388,35 +400,61 @@ export function BookingModal({ event, open, onOpenChange }: Props) {
   );
 }
 
-function Field({ label, icon, error, children }: { label: string; icon?: React.ReactNode; error?: string; children: React.ReactNode }) {
+function SessionLine({ session, venue, onChange }: { session: { date: string; startTime: string; endTime: string }; venue: string; onChange?: () => void }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      <label style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12px", fontWeight: 600, letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "6px" }}>
-        {icon && <span style={{ color: "#C9A25F" }}>{icon}</span>}{label}
-      </label>
-      {children}
-      {error && <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "11px" }}>{error}</span>}
+    <div style={{ background: SAND, borderRadius: 12, padding: "12px 14px", fontSize: 13, color: INK, display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600, color: G }}><Calendar size={13} color={GOLD} />{formatDateLong(session.date)}</span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}><Clock size={13} color={GOLD} />{formatTime12(session.startTime)} – {formatTime12(session.endTime)} IST</span>
+        {venue && <span style={{ display: "flex", gap: 8, alignItems: "center" }}><MapPin size={13} color={GOLD} />{venue}</span>}
+      </div>
+      {onChange && <button type="button" onClick={onChange} style={{ color: CLAY, fontSize: 12, fontWeight: 600, alignSelf: "flex-start" }}>Change</button>}
     </div>
+  );
+}
+
+function Summary({ rows, total }: { rows: [string, string][]; total: number }) {
+  return (
+    <div style={{ background: SAND, borderRadius: 12, padding: "14px 18px", width: "100%", textAlign: "left" }}>
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6, fontSize: 13 }}>
+          <span style={{ color: INK, opacity: 0.7 }}>{k}</span><span style={{ color: G, fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>{v}</span>
+        </div>
+      ))}
+      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid rgba(15,51,43,0.12)", paddingTop: 8, marginTop: 8 }}>
+        <span style={{ fontSize: 14, color: INK }}>Total</span><span style={{ fontFamily: "Playfair Display, serif", fontSize: 20, fontWeight: 700, color: G }}>{rupees(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, error, type = "text", hint, autoComplete }: { label: string; value: string; onChange: (v: string) => void; error?: string; type?: string; hint?: string; autoComplete?: string }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: INK }}>
+      {label}
+      <input type={type} value={value} autoComplete={autoComplete} onChange={e => onChange(e.target.value)} aria-invalid={!!error}
+        style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${error ? CLAY : SAND}`, background: "#fff", fontSize: 14, fontWeight: 400, color: INK, outline: "none" }} />
+      {error ? <span style={{ color: CLAY, fontSize: 11, fontWeight: 500 }}>{error}</span> : hint && <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.6 }}>{hint}</span>}
+    </label>
   );
 }
 
 function Consent({ checked, error, onChange, children }: { checked: boolean; error?: string; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
     <div>
-      <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", backgroundColor: "#ffffff", border: `1.5px solid ${error ? "#C8734F" : checked ? "#0F332B" : "#EEE2D5"}`, borderRadius: "10px", padding: "12px 14px", transition: "border-color 0.15s" }}>
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          style={{ accentColor: "#0F332B", width: "16px", height: "16px", marginTop: "2px", flexShrink: 0, cursor: "pointer" }}
-        />
-        <span style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "12.5px", lineHeight: 1.6 }}>{children}</span>
+      <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", background: "#fff", border: `1.5px solid ${error ? CLAY : checked ? G : SAND}`, borderRadius: 10, padding: "12px 14px" }}>
+        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ accentColor: G, width: 16, height: 16, marginTop: 2, flexShrink: 0 }} />
+        <span style={{ color: INK, fontSize: 12.5, lineHeight: 1.6 }}>{children}</span>
       </label>
-      {error && <span style={{ fontFamily: "Poppins, sans-serif", color: "#C8734F", fontSize: "11px", display: "block", marginTop: "5px" }}>{error}</span>}
+      {error && <span style={{ color: CLAY, fontSize: 11, display: "block", marginTop: 5 }}>{error}</span>}
     </div>
   );
 }
 
-function inputStyle(error: boolean): React.CSSProperties {
-  return { width: "100%", padding: "11px 14px", borderRadius: "10px", border: `1.5px solid ${error ? "#C8734F" : "#EEE2D5"}`, backgroundColor: "#ffffff", fontFamily: "Poppins, sans-serif", fontSize: "14px", color: "#2F3328", outline: "none", boxSizing: "border-box" };
+function RoundBtn({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" aria-label={label} disabled={disabled} onClick={onClick} style={{ width: 34, height: 34, borderRadius: "50%", border: `1px solid ${SAND}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: G, opacity: disabled ? 0.4 : 1 }}>{children}</button>;
+}
+
+function Primary({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ background: disabled ? SAND : G, color: disabled ? INK : CREAM, fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", borderRadius: 999, padding: "12px 24px", cursor: disabled ? "not-allowed" : "pointer" }}>{children}</button>;
 }

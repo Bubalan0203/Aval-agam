@@ -2,7 +2,7 @@
 import { legacySessions, sessionAvailable } from "@/lib/event-sessions";
 import { useState, useEffect } from "react";
 import { BookOpen } from "lucide-react";
-import { getEvents } from "@/lib/firestore";
+import { getPublishedEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 import { EventCard } from "@/components/EventCard";
 
@@ -28,7 +28,7 @@ export default function HomePage() {
   const [category, setCategory] = useState("All");
   const [events, setEvents] = useState<Event[]>([]);
 
-  useEffect(() => { getEvents().then(setEvents); }, []);
+  useEffect(() => { getPublishedEvents().then(setEvents).catch(() => {}); }, []);
 
   // Only upcoming events, soonest first
 
