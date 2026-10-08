@@ -6,7 +6,7 @@ import { BookingError, checkAvailability, createBooking, markConfirmationEmailSe
 import { sendConfirmationEmail } from "@/lib/email";
 import { formatDateLong, formatDateShort, formatTime12, maxQuantity, rupees, sessionRemaining, ticketRemaining, upcomingSessions } from "@/lib/booking-logic";
 
-type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void; onBooked?: () => void };
+type Props = { event: Event; open: boolean; onOpenChange: (v: boolean) => void; onBooked?: () => void; initialSessionId?: string };
 type Step = "date" | "tickets" | "details" | "review" | "success" | "refund" | "error";
 
 const G = "#0F332B", CREAM = "#FBF4E8", SAND = "#EEE2D5", GOLD = "#C9A25F", CLAY = "#C8734F", INK = "#2F3328";
@@ -33,14 +33,15 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "date", label: "Date" }, { id: "tickets", label: "Tickets" }, { id: "details", label: "Details" }, { id: "review", label: "Pay" },
 ];
 
-export function BookingModal({ event, open, onOpenChange, onBooked }: Props) {
+export function BookingModal({ event, open, onOpenChange, onBooked, initialSessionId }: Props) {
   const sessions = useMemo(() => upcomingSessions(event), [event]);
   const singleDate = sessions.length === 1;
+  const preset = sessions.find(s => s.id === (singleDate ? sessions[0].id : initialSessionId) && sessionRemaining(event, s) > 0);
   const firstStep: Step = singleDate ? "tickets" : "date";
 
-  const [step, setStep] = useState<Step>(firstStep);
-  const [sessionId, setSessionId] = useState(singleDate ? sessions[0].id : "");
-  const [ticketTypeId, setTicketTypeId] = useState(() => singleDate ? event.ticketTypes.find(t => ticketRemaining(t, sessions[0]) > 0)?.id ?? "" : "");
+  const [step, setStep] = useState<Step>(preset ? "tickets" : firstStep);
+  const [sessionId, setSessionId] = useState(preset?.id ?? "");
+  const [ticketTypeId, setTicketTypeId] = useState(() => preset ? event.ticketTypes.find(t => ticketRemaining(t, preset) > 0)?.id ?? "" : "");
   const [quantity, setQuantity] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [consent, setConsent] = useState({ terms: false, workshop: false });
