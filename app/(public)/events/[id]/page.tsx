@@ -1,198 +1,215 @@
 "use client";
-import { Suspense, useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Calendar, Clock, MapPin, ArrowLeft, X } from "lucide-react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, CalendarDays, Clock, MapPin, MessageCircle, Share2, Ticket } from "lucide-react";
 import { getEvent, getPublishedEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
-import { useSearchParams } from "next/navigation";
-import { bookableSessions, formatDateShort, formatTime12, sessionRemaining, upcomingSessions } from "@/lib/booking-logic";
+import { bookableSessions, formatDateLong, formatDateShort, formatTime12, rupees, sessionRemaining, upcomingSessions } from "@/lib/booking-logic";
 import { BookingModal } from "@/components/BookingModal";
 import { EventDescription } from "@/components/EventDescription";
 import { EventMediaGallery } from "@/components/EventMediaGallery";
 import { EventCard } from "@/components/EventCard";
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
-
+const G = "#0F332B", CREAM = "#FBF4E8", SAND = "#EEE2D5", GOLD = "#C9A25F", CLAY = "#C8734F", INK = "#2F3328";
+const WHATSAPP = "https://wa.me/919952697993";
 
 export default function EventDetailsPage() {
-  return <Suspense fallback={null}><EventDetails /></Suspense>;
+  return <Suspense fallback={<EventSkeleton />}><EventDetails /></Suspense>;
+}
+
+function EventSkeleton() {
+  return (
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
+      <div className="admin-skeleton" style={{ height: 380, borderRadius: 20, background: SAND }} />
+      <div className="admin-skeleton" style={{ height: 28, width: "60%", marginTop: 24, background: SAND }} />
+      <div className="admin-skeleton" style={{ height: 16, width: "40%", marginTop: 12, background: SAND }} />
+    </div>
+  );
 }
 
 function EventDetails() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const preview = useSearchParams().get("preview") === "1";
   const [event, setEvent] = useState<Event | null>(null);
   const [otherEvents, setOtherEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const preview = useSearchParams().get("preview") === "1";
+  const [result, setResult] = useState<{ id: string; state: "ok" | "missing" | "error" } | null>(null);
+  const state = result?.id === id ? result.state : "loading";
+  const setState = (s: "ok" | "missing" | "error") => setResult({ id, state: s });
   const [modalOpen, setModalOpen] = useState(false);
-  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string | undefined>();
+  const [copied, setCopied] = useState(false);
 
-  const reloadEvent = () => { getEvent(id).then(e => { if (e) setEvent(e); }).catch(() => {}); };
+  const reloadEvent = useCallback(() => { getEvent(id).then(e => { if (e) setEvent(e); }).catch(() => {}); }, [id]);
 
   useEffect(() => {
-    Promise.all([getEvent(id), getPublishedEvents()]).then(([evt, all]) => {
-      setEvent(evt && (evt.status === "published" || preview) ? evt : null);
-
-      setOtherEvents(
-        all
-          .filter(e => e.id !== id && upcomingSessions(e).length > 0)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(0, 3)
-      );
-      setLoading(false);
-    });
+    Promise.all([getEvent(id), getPublishedEvents().catch(() => [] as Event[])]).then(([evt, all]) => {
+      const visible = evt && (evt.status === "published" || preview) ? evt : null;
+      setEvent(visible);
+      setState(visible ? "ok" : "missing");
+      setOtherEvents(all.filter(e => e.id !== id && upcomingSessions(e).length > 0)
+        .sort((a, b) => `${upcomingSessions(a)[0].date}`.localeCompare(upcomingSessions(b)[0].date)).slice(0, 3));
+    }).catch(() => setState("error"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, preview]);
 
-  // Reset after async content mounts as well as when navigating between events.
-  useEffect(() => {
-    if (!loading && event?.id === id) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [id, loading, event?.id]);
+  useEffect(() => { if (state === "ok") window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [id, state]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxImg(null); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
-  // Lock page scroll while the lightbox is open
-  useEffect(() => {
-    document.body.style.overflow = lightboxImg ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [lightboxImg]);
-
-  if (loading) {
+  if (state === "loading") return <EventSkeleton />;
+  if (state !== "ok" || !event) {
     return (
-      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ fontFamily: "Poppins, sans-serif", color: "#0F332B", fontSize: "15px", opacity: 0.5 }}>Loading event…</p>
-      </div>
-    );
-  }
-
-  if (!event) {
-    return (
-      <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}>
-        <p style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px" }}>Event not found</p>
-        <button type="button" onClick={() => router.push("/#all-events")} style={{ backgroundColor: "#0F332B", color: "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 600, border: "none", borderRadius: "9999px", padding: "12px 24px", cursor: "pointer" }}>Back to Events</button>
+      <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 24, textAlign: "center" }}>
+        <p style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 26 }}>{state === "error" ? "We couldn't load this event" : "This event isn't available"}</p>
+        <p style={{ color: INK, fontSize: 14, maxWidth: 420 }}>{state === "error" ? "Please check your connection and try again." : "It may have ended or been removed. Have a look at what's coming up."}</p>
+        <button type="button" onClick={() => state === "error" ? location.reload() : router.push("/#all-events")} style={{ background: G, color: CREAM, fontSize: 13, fontWeight: 600, borderRadius: 999, padding: "12px 24px" }}>{state === "error" ? "Try again" : "See upcoming events"}</button>
       </div>
     );
   }
 
   const upcoming = upcomingSessions(event);
-  const nextOpen = bookableSessions(event)[0];
-  const isSoldOut = !nextOpen;
-  const shown = nextOpen ?? upcoming[0];
+  const open = bookableSessions(event);
+  const next = open[0] ?? upcoming[0];
+  const isDraft = event.status !== "published";
+  const canBook = !isDraft && open.length > 0;
+  const prices = event.ticketTypes.map(t => t.price);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const priceLabel = minPrice === 0 && Math.max(...prices, 0) === 0 ? "Free" : `${prices.length > 1 && Math.max(...prices) !== minPrice ? "From " : ""}${rupees(minPrice)}`;
+  const totalLeft = next ? sessionRemaining(event, next) : 0;
 
-  return (
-    <div style={{ fontFamily: "Poppins, sans-serif" }}>
+  function book(sessionId?: string) {
+    if (!canBook) return;
+    setChosen(sessionId);
+    setModalOpen(true);
+  }
 
-      {/* Hero banner */}
-      <section style={{ position: "relative", height: "clamp(280px, 40vw, 460px)", overflow: "hidden" }}>
-        {event.image ? (
-          <img src={event.image} alt={event.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        ) : (
-          <div style={{ width: "100%", height: "100%", backgroundColor: "#0F332B" }} />
+  async function share() {
+    const url = window.location.href.replace(/\?preview=1/, "");
+    try {
+      if (navigator.share) await navigator.share({ title: event!.title, url });
+      else { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    } catch { /* user dismissed */ }
+  }
+
+  const statusLine = isDraft ? "Preview — not published" : !upcoming.length ? "No upcoming dates" : !open.length ? "Sold out" : totalLeft <= 10 ? `Only ${totalLeft} seat${totalLeft === 1 ? "" : "s"} left` : "Seats available";
+
+  const bookingCard = (
+    <div style={{ background: "#fff", borderRadius: 20, border: `1px solid ${SAND}`, boxShadow: "0 12px 32px rgba(15,51,43,0.08)", padding: 24 }}>
+      <p style={{ fontSize: 12, color: INK, opacity: 0.7, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Price</p>
+      <p style={{ fontFamily: "Playfair Display, serif", fontSize: 32, fontWeight: 700, color: G, lineHeight: 1.2 }}>{priceLabel}<span style={{ fontFamily: "Poppins, sans-serif", fontSize: 13, fontWeight: 500, color: INK, opacity: 0.7 }}>{minPrice > 0 ? " / person" : ""}</span></p>
+      {event.ticketTypes.length > 1 && <p style={{ fontSize: 12, color: INK, marginTop: 4 }}>{event.ticketTypes.map(t => `${t.name} ${rupees(t.price)}`).join(" · ")}</p>}
+
+      <div style={{ borderTop: `1px solid ${SAND}`, margin: "18px 0", paddingTop: 16 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: G, marginBottom: 10 }}>{upcoming.length > 1 ? "Choose a date" : "Date"}</p>
+        {upcoming.length === 0 ? <p style={{ fontSize: 14, color: INK }}>New dates coming soon.</p> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+            {upcoming.map(s => {
+              const left = sessionRemaining(event, s);
+              return (
+                <button key={s.id} type="button" disabled={!canBook || left === 0} onClick={() => book(s.id)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left", padding: "10px 14px", borderRadius: 12, border: `1px solid ${SAND}`, background: left === 0 ? "#F7F2EA" : "#fff", cursor: canBook && left > 0 ? "pointer" : "default" }}>
+                  <span>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: left === 0 ? "#8a8a80" : G }}>{formatDateShort(s.date)}</span>
+                    <span style={{ fontSize: 12, color: INK, opacity: 0.75 }}>{formatTime12(s.startTime)} – {formatTime12(s.endTime)}</span>
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: left === 0 ? "#8a8a80" : left <= 10 ? CLAY : "#2f7a55", whiteSpace: "nowrap" }}>{left === 0 ? "Sold out" : left <= 10 ? `${left} left` : "Available"}</span>
+                </button>
+              );
+            })}
+          </div>
         )}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(15,51,43,0.25) 0%, rgba(15,51,43,0.8) 100%)" }} />
-        <div style={{ position: "absolute", bottom: "36px", left: 0, right: 0, padding: "0 40px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-            <span style={{ backgroundColor: isSoldOut ? "rgba(47,51,40,0.3)" : "rgba(15,51,43,0.3)", color: "#FBF4E8", border: "1px solid rgba(255,255,255,0.2)", fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: "9999px", padding: "4px 14px" }}>{isSoldOut ? "Sold Out" : "Available"}</span>
-            <span style={{ backgroundColor: "rgba(201,162,95,0.25)", color: "#C9A25F", fontSize: "11px", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", borderRadius: "9999px", padding: "4px 14px" }}>{event.category}</span>
-          </div>
-          <h1 style={{ fontFamily: "Playfair Display, serif", color: "#FBF4E8", fontSize: "clamp(28px, 4vw, 52px)", fontWeight: 700, lineHeight: 1.2 }}>{event.title}</h1>
-        </div>
-        <button type="button" onClick={() => router.push("/#all-events")} style={{ position: "absolute", top: "24px", left: "24px", display: "flex", alignItems: "center", gap: "8px", backgroundColor: "rgba(251,244,232,0.15)", backdropFilter: "blur(8px)", color: "#FBF4E8", fontSize: "13px", fontWeight: 500, border: "1px solid rgba(251,244,232,0.25)", borderRadius: "9999px", padding: "8px 18px", cursor: "pointer" }}>
-          <ArrowLeft size={14} /> All Events
-        </button>
-      </section>
-
-      {/* Main content */}
-      <section style={{ backgroundColor: "#FBF4E8" }} className="px-5 sm:px-10 pb-20">
-        <div style={{ maxWidth: "1300px", margin: "0 auto" }}>
-          <div style={{ paddingTop: "28px" }}>
-
-            {/* Full-width content */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-
-              {upcoming.length > 1 && (
-                <section>
-                  <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700, marginBottom: "12px" }}>Upcoming dates</h2>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                    {upcoming.map(s => {
-                      const left = sessionRemaining(event, s);
-                      return (
-                        <button key={s.id} type="button" disabled={left === 0} onClick={() => setModalOpen(true)} style={{ textAlign: "left", padding: "12px 16px", borderRadius: "12px", border: "1px solid #EEE2D5", background: "#fff", opacity: left === 0 ? 0.55 : 1, cursor: left === 0 ? "not-allowed" : "pointer" }}>
-                          <strong style={{ display: "block", color: "#0F332B", fontSize: "14px" }}>{formatDateShort(s.date)}</strong>
-                          <span style={{ fontSize: "12px", color: "#2F3328" }}>{formatTime12(s.startTime)} · {left === 0 ? "Sold out" : left <= 10 ? `${left} left` : "Available"}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-              {/* Quick facts */}
-              <div style={{ backgroundColor: "#EEE2D5", borderRadius: "16px", padding: "20px 24px" }} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { icon: <Calendar size={16} style={{ color: "#C9A25F" }} />, label: "Date", value: shown ? `${formatDate(shown.date)}${upcoming.length > 1 ? ` (+${upcoming.length - 1} more)` : ""}` : "No upcoming dates" },
-                  { icon: <Clock size={16} style={{ color: "#C9A25F" }} />, label: "Time", value: shown ? `${formatTime12(shown.startTime)} — ${formatTime12(shown.endTime)} IST` : "—" },
-                  { icon: <MapPin size={16} style={{ color: "#C9A25F" }} />, label: "Venue", value: event.location },
-                ].map((f) => (
-                  <div key={f.label} style={{ display: "flex", gap: "10px" }}>
-                    <div style={{ flexShrink: 0, marginTop: "2px" }}>{f.icon}</div>
-                    <div>
-                      <p style={{ color: "#2F3328", fontSize: "11px", opacity: 0.55, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "2px" }}>{f.label}</p>
-                      <p style={{ color: "#0F332B", fontSize: "14px", fontWeight: 500, lineHeight: 1.4 }}>{f.value}</p>
-                      {f.label === "Venue" && event.locationUrl && <a href={event.locationUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#C8734F", fontSize: "12px", textDecoration: "underline", display: "inline-block", marginTop: "5px" }}>Open in Google Maps ↗</a>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* About */}
-              <div>
-                <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "24px", fontWeight: 700, marginBottom: "14px" }}>About this event</h2>
-                <EventDescription value={event.description} format={event.descriptionFormat} />
-              </div>
-
-              <EventMediaGallery key={event.id} urls={event.youtubeUrls} photos={event.gallery} onPhotoOpen={setLightboxImg} />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Sticky bottom bar */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, backgroundColor: "#FBF4E8", borderTop: "1px solid #EEE2D5", padding: "14px 40px", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 50, backdropFilter: "blur(8px)" }}>
-        <button onClick={() => !isSoldOut && setModalOpen(true)} disabled={isSoldOut} style={{ backgroundColor: isSoldOut ? "#EEE2D5" : "#0F332B", color: isSoldOut ? "#2F3328" : "#FBF4E8", fontFamily: "Poppins, sans-serif", fontSize: "13px", fontWeight: 700, letterSpacing: "0.1em", border: "none", borderRadius: "9999px", padding: "14px 48px", cursor: isSoldOut ? "not-allowed" : "pointer" }}>
-          {!upcoming.length ? "NO UPCOMING DATES" : isSoldOut ? "SOLD OUT" : "RESERVE A SEAT"}
-        </button>
       </div>
 
-      {/* More events */}
-      <section style={{ backgroundColor: "#EEE2D5", padding: "48px 40px" }}>
-        <div style={{ maxWidth: "1300px", margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-            <h2 style={{ fontFamily: "Playfair Display, serif", color: "#0F332B", fontSize: "22px", fontWeight: 700 }}>More events you might enjoy</h2>
-            <button type="button" onClick={() => router.push("/#all-events")} style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", cursor: "pointer", color: "#C8734F", fontSize: "13px", fontWeight: 600 }}>See all →</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {otherEvents.map((e) => <EventCard key={e.id} event={e} />)}
-          </div>
-        </div>
-      </section>
+      {canBook ? (
+        <button type="button" onClick={() => book()} style={{ width: "100%", background: G, color: CREAM, fontSize: 14, fontWeight: 700, letterSpacing: "0.06em", borderRadius: 999, padding: "15px 20px" }}>RESERVE A SEAT</button>
+      ) : (
+        <a href={`${WHATSAPP}?text=${encodeURIComponent(`Hi! I'm interested in "${event.title}". Please let me know about the next date.`)}`} target="_blank" rel="noopener noreferrer"
+          style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, width: "100%", border: `1.5px solid ${G}`, color: G, fontSize: 14, fontWeight: 700, borderRadius: 999, padding: "13px 20px" }}>
+          <MessageCircle size={16} /> {isDraft ? "Booking disabled in preview" : "Ask about the next date"}
+        </a>
+      )}
+      <p style={{ fontSize: 12, color: INK, opacity: 0.7, textAlign: "center", marginTop: 10 }}>{canBook ? "Secure payment via Razorpay · Instant confirmation" : statusLine}</p>
+    </div>
+  );
 
-      {/* Lightbox */}
-      {lightboxImg && (
-        <div onClick={() => setLightboxImg(null)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.88)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-          <button onClick={() => setLightboxImg(null)} style={{ position: "absolute", top: "20px", right: "20px", background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "9999px", width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <X size={18} color="#fff" />
-          </button>
-          <img src={lightboxImg} alt="Zoomed" onClick={e => e.stopPropagation()} style={{ maxWidth: "90vw", maxHeight: "85vh", objectFit: "contain", borderRadius: "12px", boxShadow: "0 8px 48px rgba(0,0,0,0.5)" }} />
+  return (
+    <div style={{ fontFamily: "Poppins, sans-serif", paddingBottom: 96 }}>
+      {isDraft && <div style={{ background: "#FFFAEB", color: "#B54708", textAlign: "center", fontSize: 13, fontWeight: 600, padding: 10 }}>Preview — this event isn&rsquo;t published yet. Customers can&rsquo;t see it.</div>}
+
+      {/* Hero */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 0" }}>
+        <button type="button" onClick={() => router.push("/#all-events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: G, marginBottom: 16 }}><ArrowLeft size={15} /> All events</button>
+        <div style={{ position: "relative", borderRadius: 24, overflow: "hidden", aspectRatio: "21/9", minHeight: 220, background: G }}>
+          {event.image && <img src={event.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(15,51,43,0) 30%, rgba(15,51,43,0.85) 100%)" }} />
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "clamp(18px, 4vw, 40px)" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {event.category && <span style={{ background: "rgba(201,162,95,0.9)", color: G, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px" }}>{event.category}</span>}
+              <span style={{ background: "rgba(251,244,232,0.18)", color: CREAM, border: "1px solid rgba(255,255,255,0.25)", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px" }}>{statusLine}</span>
+            </div>
+            <h1 style={{ fontFamily: "Playfair Display, serif", color: CREAM, fontSize: "clamp(26px, 4vw, 48px)", fontWeight: 700, lineHeight: 1.15, maxWidth: 900 }}>{event.title}</h1>
+          </div>
         </div>
+      </div>
+
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 20px 0" }} className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-10">
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 36 }}>
+          {/* Key facts */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { Icon: CalendarDays, label: "Date", value: next ? formatDateLong(next.date) : "To be announced", sub: upcoming.length > 1 ? `+${upcoming.length - 1} more date${upcoming.length > 2 ? "s" : ""}` : undefined },
+              { Icon: Clock, label: "Time", value: next ? `${formatTime12(next.startTime)} – ${formatTime12(next.endTime)}` : "—", sub: next ? "IST" : undefined },
+              { Icon: MapPin, label: "Venue", value: event.location || "—", sub: event.locationUrl ? "Open in Maps" : undefined, href: event.locationUrl || undefined },
+            ].map(f => (
+              <div key={f.label} style={{ background: "#fff", border: `1px solid ${SAND}`, borderRadius: 16, padding: 16, display: "flex", gap: 12 }}>
+                <span style={{ width: 38, height: 38, borderRadius: 12, background: "#F6EEDF", color: GOLD, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><f.Icon size={18} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 11, color: INK, opacity: 0.6, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>{f.label}</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: G, lineHeight: 1.4 }}>{f.value}</p>
+                  {f.sub && (f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: CLAY, textDecoration: "underline" }}>{f.sub}</a> : <p style={{ fontSize: 12, color: INK, opacity: 0.7 }}>{f.sub}</p>)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile booking card */}
+          <div className="lg:hidden">{bookingCard}</div>
+
+          <section>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+              <h2 style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 24, fontWeight: 700 }}>About this event</h2>
+              <button type="button" onClick={share} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: CLAY }}><Share2 size={14} /> {copied ? "Link copied" : "Share"}</button>
+            </div>
+            <EventDescription value={event.description} format={event.descriptionFormat} />
+          </section>
+
+          <EventMediaGallery key={event.id} urls={event.youtubeUrls} photos={event.gallery} />
+        </div>
+
+        {/* Desktop sticky booking card */}
+        <aside className="hidden lg:block"><div style={{ position: "sticky", top: 96 }}>{bookingCard}</div></aside>
+      </div>
+
+      {otherEvents.length > 0 && (
+        <section style={{ background: SAND, padding: "48px 20px", marginTop: 56 }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+            <h2 style={{ fontFamily: "Playfair Display, serif", color: G, fontSize: 24, fontWeight: 700, marginBottom: 20 }}>More events you might enjoy</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{otherEvents.map(e => <EventCard key={e.id} event={e} />)}</div>
+          </div>
+        </section>
       )}
 
-      {preview && event.status !== "published" ? null : <BookingModal key={event.id} event={event} open={modalOpen} onOpenChange={setModalOpen} onBooked={reloadEvent} />}
+      {/* Mobile sticky bar */}
+      <div className="lg:hidden" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "rgba(251,244,232,0.97)", borderTop: `1px solid ${SAND}`, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, backdropFilter: "blur(8px)" }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 16, fontWeight: 700, color: G }}>{priceLabel}</p>
+          <p style={{ fontSize: 12, color: INK, opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{next ? `${formatDateShort(next.date)} · ${statusLine}` : statusLine}</p>
+        </div>
+        {canBook
+          ? <button type="button" onClick={() => book()} style={{ background: G, color: CREAM, fontSize: 13, fontWeight: 700, letterSpacing: "0.06em", borderRadius: 999, padding: "13px 22px", display: "inline-flex", gap: 8, alignItems: "center" }}><Ticket size={15} /> RESERVE</button>
+          : <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" style={{ border: `1.5px solid ${G}`, color: G, fontSize: 13, fontWeight: 700, borderRadius: 999, padding: "11px 18px" }}>Ask on WhatsApp</a>}
+      </div>
+
+      {!isDraft && <BookingModal key={`${event.id}-${chosen ?? ""}`} event={event} open={modalOpen} onOpenChange={setModalOpen} onBooked={reloadEvent} initialSessionId={chosen} />}
     </div>
   );
 }

@@ -21,7 +21,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const [state, setState] = useState<"loading" | "ok" | "denied">("loading");
   const [user, setUser] = useState<User | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPath, setMenuPath] = useState<string | null>(null);
+  const menuOpen = menuPath === pathname; // closes automatically after navigating
+  const setMenuOpen = (v: boolean) => setMenuPath(v ? pathname : null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -32,8 +34,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     });
     return unsub;
   }, [pathname, router]);
-
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   async function logout() {
     if (!confirmLeave()) return;
