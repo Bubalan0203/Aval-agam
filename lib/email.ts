@@ -8,9 +8,12 @@ export const EMAILJS_PUBLIC_KEY  = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY  |
 const CONFIRMATION_TEMPLATE_ID   = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "template_ro58gnx";
 const CANCELLATION_TEMPLATE_ID   = process.env.NEXT_PUBLIC_EMAILJS_CANCELLATION_TEMPLATE_ID || "template_eobun16";
 
-/** Common recipient aliases so the template works whichever variable its "To Email" field uses. */
-function recipient(email: string, name: string) {
-  return { to_email: email, customer_email: email, email, user_email: email, reply_to: email, to_name: name, customer_name: name };
+export const BUSINESS_NAME = "Aval Agam";
+export const BUSINESS_EMAIL = "marketingbybrindha@gmail.com";
+
+/** Template variables: To Email = {{to_email}}, From Name = {{name}}, Reply To = {{reply_to}}. */
+export function recipient(email: string, name: string) {
+  return { to_email: email, customer_email: email, email, user_email: email, to_name: name, customer_name: name, name: BUSINESS_NAME, reply_to: BUSINESS_EMAIL };
 }
 
 export type ConfirmationEmail = {

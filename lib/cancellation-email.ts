@@ -4,6 +4,8 @@ import { doc, runTransaction, updateDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { getEvent, getEventBookings } from "./firestore";
 import { legacySessions } from "./event-sessions";
+import { formatDateLong, formatTime12, rupees } from "./booking-logic";
+import { recipient } from "./email";
 
 // These are the same public EmailJS identifiers used by the original booking form.
 const service = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || "service_ccmza7t";
@@ -33,13 +35,12 @@ export async function sendCancellationEmails(eventId: string) {
     if (!claimed) continue;
     try {
       await emailjs.send(service, template, {
-        to_email: booking.email, customer_email: booking.email, customer_name: booking.name,
-        email: booking.email, user_email: booking.email, reply_to: booking.email, to_name: booking.name,
+        ...recipient(booking.email, booking.name),
         booking_id: booking.id, event_title: booking.eventTitle,
-        event_date: booking.sessionDate ?? session.date,
-        event_time: `${booking.sessionStartTime ?? session.startTime}–${booking.sessionEndTime ?? session.endTime} IST`,
-        event_venue: event.location, ticket_type: booking.ticketType, quantity: booking.quantity,
-        amount: booking.amount, cancellation_reason: session.cancellationReason ?? "This event date has been cancelled.",
+        event_date: formatDateLong(booking.sessionDate ?? session.date),
+        event_time: `${formatTime12(booking.sessionStartTime ?? session.startTime)} – ${formatTime12(booking.sessionEndTime ?? session.endTime)} IST`,
+        event_venue: event.location, ticket_type: booking.ticketType, quantity: String(booking.quantity),
+        amount: rupees(booking.amount), cancellation_reason: session.cancellationReason ?? "This event date has been cancelled.",
         refund_status: booking.status === "refunded" ? "Your refund has been recorded as completed." : booking.amount > 0 ? "Your booking is marked as needing a refund. Please contact our team for payment assistance." : "This was a free booking. No refund is due.",
       }, publicKey);
       await updateDoc(ref, { cancellationEmailSentAt: new Date().toISOString(), cancellationEmailLeaseUntil: 0, cancellationEmailError: "" });
