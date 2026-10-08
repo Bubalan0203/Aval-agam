@@ -111,8 +111,12 @@ function historyEntry(action: string, note?: string): BookingHistoryEntry {
 
 // ── Admin access ─────────────────────────────────────────────────────────────
 
-/** Admins are users with a document at admins/{uid}. Firestore rules enforce the same check. */
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+
+/** Admins are listed in NEXT_PUBLIC_ADMIN_EMAILS, or have a document at admins/{uid}. */
 export async function isAdmin(uid: string): Promise<boolean> {
+  const email = auth.currentUser?.email?.toLowerCase();
+  if (email && ADMIN_EMAILS.includes(email)) return true;
   try { return (await getDoc(doc(db, "admins", uid))).exists(); }
   catch { return false; }
 }
