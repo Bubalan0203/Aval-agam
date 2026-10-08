@@ -4,7 +4,7 @@ import { Download, Plus, Search, Ticket } from "lucide-react";
 import type { Booking, BookingStatus, Event } from "@/lib/firestore";
 import { amountMismatch, formatDateShort, formatTime12, rupees } from "@/lib/booking-logic";
 import { BookingDetailDialog, ManualBookingDialog, exportBookingsCsv } from "./BookingTools";
-import { Badge, BookingStatusBadge, BOOKING_STATUS_LABEL, Button, C, Card, Empty, inputStyle } from "./ui";
+import { Badge, BookingStatusBadge, BOOKING_STATUS_LABEL, Button, C, Card, Empty, Select, inputStyle } from "./ui";
 
 export type BookingFlag = "" | "amount" | "email";
 
@@ -53,18 +53,15 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, phone or ID" style={{ ...inputStyle(), paddingLeft: 38 }} />
         </div>
         {!fixedEventId && (
-          <select value={eventId} onChange={e => { setEventId(e.target.value); setSessionId(""); }} style={{ ...inputStyle(), width: "auto", maxWidth: 240 }}>
-            <option value="">All events</option>{events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-          </select>
+          <Select width={240} ariaLabel="Event" value={eventId} onChange={v => { setEventId(v); setSessionId(""); }}
+            options={[{ value: "", label: "All events" }, ...events.map(e => ({ value: e.id, label: e.title || "Untitled", hint: e.sessions[0] ? `${e.sessions.length} date${e.sessions.length === 1 ? "" : "s"}` : undefined }))]} />
         )}
         {eventId && (
-          <select value={sessionId} onChange={e => setSessionId(e.target.value)} style={{ ...inputStyle(), width: "auto" }}>
-            <option value="">All dates</option>{sessions.map(s => <option key={s.id} value={s.id}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}{s.status === "cancelled" ? " (cancelled)" : ""}</option>)}
-          </select>
+          <Select width={200} ariaLabel="Date" value={sessionId} onChange={setSessionId}
+            options={[{ value: "", label: "All dates" }, ...sessions.map(s => ({ value: s.id, label: `${formatDateShort(s.date)} · ${formatTime12(s.startTime)}`, hint: s.status === "cancelled" ? "Cancelled" : undefined }))]} />
         )}
-        <select value={status} onChange={e => setStatus(e.target.value as BookingStatus | "")} style={{ ...inputStyle(), width: "auto" }}>
-          <option value="">All statuses</option>{Object.entries(BOOKING_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        <Select width={170} ariaLabel="Status" value={status} onChange={v => setStatus(v as BookingStatus | "")}
+          options={[{ value: "", label: "All statuses" }, ...Object.entries(BOOKING_STATUS_LABEL).map(([k, v]) => ({ value: k, label: v }))]} />
         {flag && <Button variant="secondary" onClick={() => setFlag("")}>{flag === "amount" ? "Below price only" : "Email not sent only"} ✕</Button>}
         {filtered && <Button variant="ghost" onClick={() => { setQ(""); if (!fixedEventId) setEventId(""); setSessionId(""); setStatus(""); setFlag(""); }}>Clear filters</Button>}
       </div>

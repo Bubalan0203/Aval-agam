@@ -10,7 +10,7 @@ import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options"
 import { setUnsaved, confirmLeave } from "@/lib/unsaved";
 import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
 import { ImageUploader } from "./ImageUploader";
-import { Badge, Button, C, Card, EventStatusBadge, Field, PageHeader, inputStyle, shadow, useToast } from "./ui";
+import { Badge, Button, C, Card, EventStatusBadge, Field, PageHeader, Select, inputStyle, shadow, useToast } from "./ui";
 
 type TicketDraft = { id: string; name: string; price: string; available: string };
 
@@ -177,11 +177,9 @@ export function EventEditor({ initial }: { initial?: Event }) {
   const editableSessions = sessions.filter(s => !lockedSessions.includes(s));
 
   const timeSelect = (s: EventSession, key: "startTime" | "endTime", disabled: boolean, error?: boolean) => (
-    <select value={s[key]} disabled={disabled} onChange={e => updateSession(s.id, key, e.target.value)} style={inputStyle(error)} aria-label={key === "startTime" ? "Start time" : "End time"}>
-      <option value="">Select</option>
-      {s[key] && !EVENT_TIME_OPTIONS.some(o => o.value === s[key]) && <option value={s[key]}>{s[key]}</option>}
-      {EVENT_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <Select ariaLabel={key === "startTime" ? "Start time" : "End time"} placeholder="Select time" value={s[key]} disabled={disabled} error={error} onChange={v => updateSession(s.id, key, v)}
+      options={[...(s[key] && !EVENT_TIME_OPTIONS.some(o => o.value === s[key]) ? [{ value: s[key], label: s[key] }] : []),
+        ...EVENT_TIME_OPTIONS.map(o => ({ value: o.value, label: o.label, disabled: key === "endTime" && !!s.startTime && o.value <= s.startTime }))]} />
   );
 
   const sessionRow = (s: EventSession) => {
@@ -223,10 +221,8 @@ export function EventEditor({ initial }: { initial?: Event }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2"><Field label="Event title" required error={errors.title}><input value={form.title} maxLength={140} onChange={e => setField("title", e.target.value)} style={inputStyle(!!errors.title)} placeholder="e.g. Mindful Reset Workshop" /></Field></div>
               <Field label="Category" required error={errors.category}>
-                <select value={form.category} onChange={e => setField("category", e.target.value)} style={inputStyle(!!errors.category)}>
-                  <option value="">Choose a category</option>
-                  {EVENT_CATEGORY_OPTIONS.map(c => <option key={c}>{c}</option>)}
-                </select>
+                <Select ariaLabel="Category" placeholder="Choose a category" error={!!errors.category} value={form.category} onChange={v => setField("category", v)}
+                  options={EVENT_CATEGORY_OPTIONS.map(c => ({ value: c, label: c }))} />
               </Field>
               <Field label="Venue" required error={errors.location} hint="e.g. “Online · Zoom” or a place and city"><input value={form.location} onChange={e => setField("location", e.target.value)} style={inputStyle(!!errors.location)} /></Field>
               <div className="md:col-span-2"><Field label="Google Maps link" hint="Optional — shown as “Open in Maps”" error={errors.locationUrl}><input value={form.locationUrl} onChange={e => setField("locationUrl", e.target.value)} style={inputStyle(!!errors.locationUrl)} placeholder="https://maps.app.goo.gl/…" /></Field></div>
@@ -248,9 +244,8 @@ export function EventEditor({ initial }: { initial?: Event }) {
               <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, color: C.ink, flexWrap: "wrap" }}>
                 <Repeat size={16} /> Repeat last date
                 <input type="number" min={1} max={52} value={repeat.count} onChange={e => setRepeat(r => ({ ...r, count: e.target.value }))} style={{ ...inputStyle(), width: 70 }} aria-label="Times" /> more times, every
-                <select value={repeat.every} onChange={e => setRepeat(r => ({ ...r, every: e.target.value }))} style={{ ...inputStyle(), width: 120 }} aria-label="Interval">
-                  <option value="1">day</option><option value="7">week</option><option value="14">2 weeks</option><option value="28">4 weeks</option>
-                </select>
+                <Select width={130} ariaLabel="Interval" value={repeat.every} onChange={v => setRepeat(r => ({ ...r, every: v }))}
+                  options={[{ value: "1", label: "day" }, { value: "7", label: "week" }, { value: "14", label: "2 weeks" }, { value: "28", label: "4 weeks" }]} />
                 <Button variant="secondary" onClick={addRepeats}>Add</Button>
               </div>
             </div>
@@ -278,7 +273,7 @@ export function EventEditor({ initial }: { initial?: Event }) {
             <div style={{ marginTop: 14 }}><Button variant="secondary" onClick={() => touch(setTickets)([...tickets, { id: crypto.randomUUID(), name: "", price: "", available: "" }])}><Plus size={16} /> Add ticket type</Button></div>
           </Card>
 
-          <Card id="images" title={sectionTitle(4, "Images")} subtitle="A cover image plus as many gallery photos as you like.">
+          <Card id="images" title={sectionTitle(4, "Images")} subtitle="One cover (banner) image plus up to 4 gallery photos.">
             <ImageUploader cover={images.cover} gallery={images.gallery} onChange={touch(setImages)} onBusyChange={setUploading} error={errors.image} />
           </Card>
 

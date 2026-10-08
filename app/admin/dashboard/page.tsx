@@ -35,7 +35,6 @@ export default function AdminDashboardPage() {
       flagged: confirmed.filter(b => amountMismatch(b, eventsById.get(b.eventId))),
       unsentEmails: confirmed.filter(b => !b.confirmationEmailSentAt && b.source === "website" && b.history?.length),
       drafts: data.events.filter(e => e.status === "draft"),
-      noDates: data.events.filter(e => e.status === "published" && upcomingSessions(e).length === 0),
       needsMigration: data.events.some(e => e.schemaVersion !== 3),
       upcoming: upcoming.slice(0, 6), upcomingCount: upcoming.length,
       recent: data.bookings.slice(0, 6),
@@ -50,7 +49,6 @@ export default function AdminDashboardPage() {
     stats.flagged.length > 0 && { href: "/admin/bookings?flag=amount", tone: "bad" as const, text: `${stats.flagged.length} payment${stats.flagged.length === 1 ? "" : "s"} below the ticket price`, sub: "Check these in Razorpay" },
     stats.unsentEmails.length > 0 && { href: "/admin/bookings?flag=email", tone: "warn" as const, text: `${stats.unsentEmails.length} confirmation email${stats.unsentEmails.length === 1 ? "" : "s"} not sent`, sub: "Open the booking and resend" },
     stats.drafts.length > 0 && { href: "/admin/events?status=draft", tone: "warn" as const, text: `${stats.drafts.length} draft event${stats.drafts.length === 1 ? "" : "s"} not published yet`, sub: "Hidden from the website" },
-    stats.noDates.length > 0 && { href: "/admin/events?status=nodates", tone: "warn" as const, text: `${stats.noDates.length} published event${stats.noDates.length === 1 ? " has" : "s have"} no upcoming dates`, sub: "Customers can't book these — add dates or archive" },
   ].filter(Boolean) as { href: string; tone: "bad" | "warn"; text: string; sub: string }[];
 
   return (

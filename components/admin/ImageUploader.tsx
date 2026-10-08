@@ -5,7 +5,7 @@ import { C } from "./ui";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
-const MAX_GALLERY = 60;
+const MAX_GALLERY = 4;
 const MAX_INPUT_BYTES = 40 * 1024 * 1024; // phone photos are shrunk below 8 MB before upload
 const MAX_EDGE = 2400;
 const CONCURRENCY = 3;
@@ -80,7 +80,7 @@ export function ImageUploader({ cover, gallery, onChange, onBusyChange, error }:
     let ok = files.filter(f => { const e = checkFile(f); if (e) bad.push(`${f.name}: ${e}`); return !e; });
     if (target === "cover") ok = ok.slice(0, 1);
     const room = MAX_GALLERY - latest.current.gallery.length - jobs.filter(j => j.target === "gallery" && !j.error).length;
-    if (target === "gallery" && ok.length > room) { bad.push(`Gallery is limited to ${MAX_GALLERY} images.`); ok = ok.slice(0, Math.max(0, room)); }
+    if (target === "gallery" && ok.length > room) { bad.push(`Only ${MAX_GALLERY} gallery photos are allowed — ${files.length - Math.max(0, room)} extra not added. Remove one to add another.`); ok = ok.slice(0, Math.max(0, room)); }
     setRejects(bad);
     ok.forEach(file => run({ key: crypto.randomUUID(), file, target, progress: 0, preview: URL.createObjectURL(file) }));
   }

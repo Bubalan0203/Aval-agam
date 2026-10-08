@@ -112,3 +112,5 @@ body {
   .ev-gallery button:first-child { grid-column: span 2 !important; grid-row: span 2 !important; }
   .ev-gallery button:nth-child(n+2) { grid-column: auto !important; grid-row: auto !important; }
 }
+.admin-select-item[data-highlighted] { background: #F2F4F7; }
+.admin-select-item[data-state="checked"] { font-weight: 600; }

@@ -135,18 +135,18 @@ function EventDetails() {
     <div style={{ fontFamily: "Poppins, sans-serif", paddingBottom: 96 }}>
       {isDraft && <div style={{ background: "#FFFAEB", color: "#B54708", textAlign: "center", fontSize: 13, fontWeight: 600, padding: 10 }}>Preview — this event isn&rsquo;t published yet. Customers can&rsquo;t see it.</div>}
 
-      {/* Hero */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 0" }}>
-        <button type="button" onClick={() => router.push("/#all-events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: G, marginBottom: 16 }}><ArrowLeft size={15} /> All events</button>
-        <div className="aspect-[4/3] sm:aspect-[21/9]" style={{ position: "relative", borderRadius: 24, overflow: "hidden", background: G, width: "100%" }}>
-          {event.image && <img src={event.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(15,51,43,0) 30%, rgba(15,51,43,0.85) 100%)" }} />
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "clamp(18px, 4vw, 40px)" }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              {event.category && <span style={{ background: "rgba(201,162,95,0.9)", color: G, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px" }}>{event.category}</span>}
+      {/* Hero — full width banner */}
+      <div className="h-[340px] sm:h-[460px] lg:h-[540px]" style={{ position: "relative", width: "100%", overflow: "hidden", background: G }}>
+        {event.image && <img src={event.image} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(15,51,43,0.35) 0%, rgba(15,51,43,0.05) 35%, rgba(15,51,43,0.88) 100%)" }} />
+        <div style={{ position: "absolute", inset: 0, maxWidth: 1200, margin: "0 auto", padding: "20px 20px clamp(24px, 4vw, 48px)", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <button type="button" onClick={() => router.push("/#all-events")} style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: CREAM, background: "rgba(15,51,43,0.45)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999, padding: "8px 14px", backdropFilter: "blur(6px)" }}><ArrowLeft size={15} /> All events</button>
+          <div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {event.category && <span style={{ background: "rgba(201,162,95,0.92)", color: G, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px" }}>{event.category}</span>}
               <span style={{ background: "rgba(251,244,232,0.18)", color: CREAM, border: "1px solid rgba(255,255,255,0.25)", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px" }}>{statusLine}</span>
             </div>
-            <h1 style={{ fontFamily: "Playfair Display, serif", color: CREAM, fontSize: "clamp(26px, 4vw, 48px)", fontWeight: 700, lineHeight: 1.15, maxWidth: 900 }}>{event.title}</h1>
+            <h1 style={{ fontFamily: "Playfair Display, serif", color: CREAM, fontSize: "clamp(28px, 4.5vw, 54px)", fontWeight: 700, lineHeight: 1.12, maxWidth: 900, textShadow: "0 2px 16px rgba(0,0,0,0.25)" }}>{event.title}</h1>
           </div>
         </div>
       </div>

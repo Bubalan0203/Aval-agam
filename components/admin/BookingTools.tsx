@@ -2,12 +2,12 @@
 import { Fragment, useState } from "react";
 import { Copy, Mail, Phone } from "lucide-react";
 import {
-  addBookingNote, cancelBooking, createBooking, markConfirmationEmailSent, markRefunded,
+  addBookingNote, cancelBooking, createBooking, deleteBooking, markConfirmationEmailSent, markRefunded,
   type Booking, type Event,
 } from "@/lib/firestore";
-import { sendConfirmationEmail } from "@/lib/email";
+import { sendBookingCancellationEmail, sendConfirmationEmail } from "@/lib/email";
 import { amountMismatch, downloadCsv, formatDateLong, formatDateShort, formatTime12, maxQuantity, rupees, ticketRemaining, upcomingSessions } from "@/lib/booking-logic";
-import { BookingStatusBadge, BOOKING_STATUS_LABEL, Badge, Button, C, ConfirmDialog, Drawer, Field, inputStyle } from "./ui";
+import { BookingStatusBadge, BOOKING_STATUS_LABEL, Badge, Button, C, ConfirmDialog, Drawer, Field, Select, inputStyle } from "./ui";
 
 export function exportBookingsCsv(filename: string, bookings: Booking[]) {
   downloadCsv(filename, [
@@ -20,7 +20,8 @@ const PAYMENT_LABEL: Record<string, string> = { razorpay: "Razorpay", free: "Fre
 
 /** Slide-over with a booking's details, history and actions. */
 export function BookingDetailDialog({ booking, event, onClose, onChanged }: { booking: Booking | null; event?: Event | null; onClose: () => void; onChanged: (msg: string) => void }) {
-  const [confirm, setConfirm] = useState<"cancel" | "refund" | null>(null);
+  const [confirm, setConfirm] = useState<"cancel" | "refund" | "delete" | null>(null);
+  const [notify, setNotify] = useState(true);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +57,7 @@ export function BookingDetailDialog({ booking, event, onClose, onChanged }: { bo
           {b.status === "confirmed" && <Button variant="danger" disabled={busy} onClick={() => setConfirm("cancel")}>Cancel booking</Button>}
           {b.status === "confirmed" && <Button variant="secondary" disabled={busy} onClick={resend}><Mail size={16} /> {busy ? "Sending…" : b.confirmationEmailSentAt ? "Resend email" : "Send email"}</Button>}
           {b.status === "refund_required" && <Button disabled={busy} onClick={() => setConfirm("refund")}>Mark as refunded</Button>}
+          <Button variant="ghost" disabled={busy} onClick={() => setConfirm("delete")} style={{ color: C.red, marginRight: "auto", order: -1 }}>Delete</Button>
         </>}>
         {b.failureReason && <p style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14, marginBottom: 20 }}>{b.failureReason}</p>}
         {error && <p role="alert" style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14, marginBottom: 20 }}>{error}</p>}
@@ -96,9 +98,23 @@ export function BookingDetailDialog({ booking, event, onClose, onChanged }: { bo
 
       <ConfirmDialog open={confirm === "cancel"} danger title="Cancel this booking?" busy={busy} confirmLabel="Cancel booking" confirmDisabled={!note.trim()}
         message={<>{b.quantity} seat{b.quantity === 1 ? "" : "s"} will go back on sale. {b.amount > 0 ? <>The booking moves to <strong>Refund needed</strong> — refund {rupees(b.amount)} in Razorpay, then mark it refunded.</> : null}</>}
-        onCancel={() => { setConfirm(null); setNote(""); }} onConfirm={() => act(() => cancelBooking(b.id!, note), "Booking cancelled.")}>
-        <Field label="Reason" required><textarea rows={2} value={note} onChange={e => setNote(e.target.value)} style={inputStyle()} placeholder="e.g. Customer asked to cancel" /></Field>
+        onCancel={() => { setConfirm(null); setNote(""); }} onConfirm={async () => {
+          let emailNote = "";
+          await act(async () => {
+            await cancelBooking(b.id!, note);
+            if (notify) {
+              try { await sendBookingCancellationEmail({ bookingId: b.id!, name: b.name, email: b.email, phone: b.phone, eventTitle: b.eventTitle, date: b.sessionDate, startTime: b.sessionStartTime, endTime: b.sessionEndTime, venue: b.venue ?? event?.location ?? "", ticketType: b.ticketType, quantity: b.quantity, amount: b.amount, reason: note.trim() }); emailNote = ` Email sent to ${b.email}.`; }
+              catch { emailNote = " The cancellation email couldn't be sent."; }
+            }
+          }, "Booking cancelled.");
+          if (emailNote) onChanged(`Booking cancelled.${emailNote}`);
+        }}>
+        <Field label="Reason (sent to the customer)" required><textarea rows={2} value={note} onChange={e => setNote(e.target.value)} style={inputStyle()} placeholder="e.g. Customer asked to cancel" /></Field>
+        <label style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14, marginTop: 12 }}><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} style={{ width: 16, height: 16, accentColor: C.green }} /> Email the customer</label>
       </ConfirmDialog>
+      <ConfirmDialog open={confirm === "delete"} danger title="Delete this booking?" busy={busy} confirmLabel="Delete forever"
+        message={<>This permanently removes {b.name}&rsquo;s booking{b.status === "confirmed" ? " and puts its seats back on sale" : ""}. No email is sent. This can&rsquo;t be undone.</>}
+        onCancel={() => setConfirm(null)} onConfirm={async () => { await act(() => deleteBooking(b.id!), "Booking deleted."); onClose(); }} />
       <ConfirmDialog open={confirm === "refund"} title="Mark as refunded?" busy={busy} confirmLabel="Mark refunded"
         message={<>Confirm you have refunded {rupees(b.amount)} to {b.name} in Razorpay.</>}
         onCancel={() => { setConfirm(null); setNote(""); }} onConfirm={() => act(() => markRefunded(b.id!, note), "Marked as refunded.")}>
@@ -156,21 +172,17 @@ export function ManualBookingDialog({ open, events, defaultEventId, onClose, onC
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {errors.form && <p role="alert" style={{ background: C.claySoft, color: C.red, borderRadius: 8, padding: "10px 12px", fontSize: 14 }}>{errors.form}</p>}
           <Field label="Event" required error={errors.eventId}>
-            <select value={f.eventId} onChange={e => setF({ ...f, eventId: e.target.value, sessionId: "", ticketTypeId: "" })} style={inputStyle(!!errors.eventId)}>
-              <option value="">Choose…</option>{bookable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-            </select>
+            <Select ariaLabel="Event" placeholder="Choose an event" error={!!errors.eventId} value={f.eventId} onChange={v => setF({ ...f, eventId: v, sessionId: "", ticketTypeId: "" })}
+              options={bookable.map(e => ({ value: e.id, label: e.title }))} />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Date" required error={errors.sessionId}>
-              <select value={f.sessionId} onChange={e => setF({ ...f, sessionId: e.target.value })} style={inputStyle(!!errors.sessionId)} disabled={!event}>
-                <option value="">Choose…</option>{sessions.map(s => <option key={s.id} value={s.id}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}</option>)}
-              </select>
+              <Select ariaLabel="Date" placeholder={event ? "Choose a date" : "Pick an event first"} error={!!errors.sessionId} disabled={!event} value={f.sessionId} onChange={v => setF({ ...f, sessionId: v })}
+                options={sessions.map(s => ({ value: s.id, label: `${formatDateShort(s.date)} · ${formatTime12(s.startTime)}` }))} />
             </Field>
             <Field label="Ticket" required error={errors.ticketTypeId}>
-              <select value={f.ticketTypeId} onChange={e => setF({ ...f, ticketTypeId: e.target.value })} style={inputStyle(!!errors.ticketTypeId)} disabled={!event}>
-                <option value="">Choose…</option>
-                {event?.ticketTypes.map(t => { const left = session ? ticketRemaining(t, session) : null; return <option key={t.id} value={t.id} disabled={left === 0}>{t.name} · {rupees(t.price)}{left !== null ? ` · ${left ? `${left} left` : "sold out"}` : ""}</option>; })}
-              </select>
+              <Select ariaLabel="Ticket" placeholder={event ? "Choose a ticket" : "Pick an event first"} error={!!errors.ticketTypeId} disabled={!event} value={f.ticketTypeId} onChange={v => setF({ ...f, ticketTypeId: v })}
+                options={(event?.ticketTypes ?? []).map(t => { const left = session ? ticketRemaining(t, session) : null; return { value: t.id, label: `${t.name} · ${rupees(t.price)}`, disabled: left === 0, hint: left === null ? undefined : left ? `${left} left` : "Sold out" }; })} />
             </Field>
             <Field label="Quantity" required error={errors.quantity} hint={ticket && session ? `Up to ${max}` : undefined}><input type="number" min={1} max={max} value={f.quantity} onChange={e => setF({ ...f, quantity: e.target.value })} style={inputStyle(!!errors.quantity)} /></Field>
             <Field label="Amount received (₹)" error={errors.amount} hint={ticket ? `Leave blank for ${rupees(ticket.price * Math.max(qty, 0))}` : "Leave blank to use the ticket price"}><input type="number" min={0} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} style={inputStyle(!!errors.amount)} /></Field>

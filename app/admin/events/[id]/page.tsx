@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Archive, ArrowLeft, CalendarX, Copy, Download, Edit2, ExternalLink, ImageOff, MapPin, MoreHorizontal, Send, Trash2, Undo2, Users } from "lucide-react";
+import { ArrowLeft, CalendarX, Copy, Download, Edit2, ExternalLink, ImageOff, MapPin, MoreHorizontal, Send, Trash2, Undo2, Users } from "lucide-react";
 import {
   cancelEventSession, deleteEvent, duplicateEvent, getEvent, getEventBookings, getEvents, setEventStatus,
   type Booking, type Event, type EventStatus,
@@ -23,7 +23,8 @@ export default function AdminEventDetailPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<null | "delete" | "archive">(null);
+  const [dialog, setDialog] = useState<null | "delete">(null);
+  const [typed, setTyped] = useState("");
   const [cancelling, setCancelling] = useState<EventSession | null>(null);
   const [reason, setReason] = useState("");
   const [sessionFilter, setSessionFilter] = useState("");
@@ -76,9 +77,9 @@ export default function AdminEventDetailPage() {
               <Menu.Content align="end" sideOffset={6} className="admin-root" style={{ background: "#fff", border: `1px solid ${C.sand}`, borderRadius: 10, padding: 6, minWidth: 220, boxShadow: "0 12px 16px -4px rgba(16,24,40,.08)", zIndex: 100 }}>
                 {event.status === "published" && menuItem("Unpublish (hide from site)", Undo2, () => setStatus("draft", "Unpublished — hidden from the website."))}
                 {menuItem("Duplicate as draft", Copy, () => run(async () => { const nid = await duplicateEvent(event.id); router.push(`/admin/events/${nid}/edit`); }, "Copied — add dates and publish when ready."))}
-                {event.status !== "archived" ? menuItem("Archive", Archive, () => setDialog("archive")) : menuItem("Restore as draft", Undo2, () => setStatus("draft", "Restored as a draft."))}
+                {event.status === "archived" && menuItem("Restore as draft", Undo2, () => setStatus("draft", "Restored as a draft."))}
                 <Menu.Separator style={{ height: 1, background: C.sand, margin: "6px 0" }} />
-                {menuItem(bookings.length ? "Delete (has bookings — archive instead)" : "Delete event", Trash2, () => setDialog("delete"), true, bookings.length > 0)}
+                {menuItem("Delete event", Trash2, () => { setTyped(""); setDialog("delete"); }, true)}
               </Menu.Content>
             </Menu.Portal>
           </Menu.Root>
@@ -167,12 +168,12 @@ export default function AdminEventDetailPage() {
         <Field label="Reason (shown to customers)" required><textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} style={inputStyle()} placeholder="e.g. The facilitator is unwell. We're sorry for the inconvenience." /></Field>
       </ConfirmDialog>
 
-      <ConfirmDialog open={dialog === "archive"} busy={busy} confirmLabel="Archive" title="Archive this event?"
-        message="It disappears from the website and the main events list. Bookings are kept and you can restore it anytime."
-        onCancel={() => setDialog(null)} onConfirm={async () => { await setStatus("archived", "Archived."); setDialog(null); }} />
       <ConfirmDialog open={dialog === "delete"} danger busy={busy} confirmLabel="Delete forever" title="Delete this event?"
-        message="This permanently removes the event. It can't be undone."
-        onCancel={() => setDialog(null)} onConfirm={() => run(async () => { await deleteEvent(event.id); router.push("/admin/events"); }, "Event deleted.")} />
+        confirmDisabled={bookings.length > 0 && typed.trim().toUpperCase() !== "DELETE"}
+        message={bookings.length ? <>This permanently deletes the event <strong>and its {bookings.length} booking{bookings.length === 1 ? "" : "s"}</strong>. Customers are not notified. This can&rsquo;t be undone.</> : "This permanently deletes the event. It can't be undone."}
+        onCancel={() => setDialog(null)} onConfirm={() => run(async () => { await deleteEvent(event.id); router.push("/admin/events"); }, "Event deleted.")}>
+        {bookings.length > 0 && <Field label='Type DELETE to confirm'><input value={typed} onChange={e => setTyped(e.target.value)} style={inputStyle()} autoComplete="off" /></Field>}
+      </ConfirmDialog>
       {toastNode}
     </div>
   );

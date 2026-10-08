@@ -7,16 +7,14 @@ import { getEvents, type Event } from "@/lib/firestore";
 import { formatDateShort, formatTime12, rupees, sessionCapacity, sessionSold, upcomingSessions } from "@/lib/booking-logic";
 import { Badge, Button, C, Card, Empty, EventStatusBadge, PageHeader, PageSkeleton, inputStyle } from "@/components/admin/ui";
 
-type Tab = "all" | "upcoming" | "draft" | "nodates" | "archived";
-const TABS: [Tab, string][] = [["all", "All"], ["upcoming", "Upcoming"], ["draft", "Drafts"], ["nodates", "No upcoming dates"], ["archived", "Archived"]];
+type Tab = "all" | "upcoming" | "draft";
+const TABS: [Tab, string][] = [["all", "All"], ["upcoming", "Upcoming"], ["draft", "Drafts"]];
 
 function matches(e: Event, tab: Tab) {
   const up = upcomingSessions(e).length > 0;
-  if (tab === "all") return e.status !== "archived";
+  if (tab === "all") return true;
   if (tab === "upcoming") return e.status === "published" && up;
-  if (tab === "draft") return e.status === "draft";
-  if (tab === "nodates") return e.status === "published" && !up;
-  return e.status === "archived";
+  return e.status === "draft";
 }
 
 export default function AdminEventsPage() {

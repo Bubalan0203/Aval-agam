@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { AlertCircle, CheckCircle2, X } from "lucide-react";
+import * as RSelect from "@radix-ui/react-select";
+import { AlertCircle, Check, CheckCircle2, ChevronDown, X } from "lucide-react";
 import type { BookingStatus, EventStatus } from "@/lib/firestore";
 
 /**
@@ -208,5 +209,42 @@ export function ConfirmDialog({ open, title, message, confirmLabel, danger, busy
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+export type SelectOption = { value: string; label: React.ReactNode; disabled?: boolean; hint?: string };
+
+/** Styled dropdown (Radix) replacing native <select>. Empty value is shown as the placeholder. */
+export function Select({ value, onChange, options, placeholder = "Select…", error, disabled, ariaLabel, width }: {
+  value: string; onChange: (v: string) => void; options: SelectOption[]; placeholder?: string;
+  error?: boolean; disabled?: boolean; ariaLabel?: string; width?: number | string;
+}) {
+  const EMPTY = "__empty__";
+  return (
+    <RSelect.Root value={value === "" ? EMPTY : value} onValueChange={v => onChange(v === EMPTY ? "" : v)} disabled={disabled}>
+      <RSelect.Trigger aria-label={ariaLabel} style={{ ...inputStyle(error), width: width ?? "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1, textAlign: "left", minHeight: 42 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: value === "" ? C.muted : C.text }}>
+          <RSelect.Value placeholder={placeholder} />
+        </span>
+        <RSelect.Icon><ChevronDown size={16} color={C.muted} /></RSelect.Icon>
+      </RSelect.Trigger>
+      <RSelect.Portal>
+        <RSelect.Content position="popper" sideOffset={6} className="admin-root"
+          style={{ zIndex: 400, background: "#fff", border: `1px solid ${C.sand}`, borderRadius: 10, boxShadow: "0 12px 16px -4px rgba(16,24,40,.08), 0 4px 6px -2px rgba(16,24,40,.03)", minWidth: "var(--radix-select-trigger-width)", maxHeight: "min(360px, var(--radix-select-content-available-height))", overflow: "hidden" }}>
+          <RSelect.Viewport style={{ padding: 6 }}>
+            {options.map(o => (
+              <RSelect.Item key={o.value || EMPTY} value={o.value === "" ? EMPTY : o.value} disabled={o.disabled} className="admin-select-item"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "9px 10px", borderRadius: 6, fontSize: 14, color: o.disabled ? C.muted : C.text, cursor: o.disabled ? "not-allowed" : "pointer", outline: "none", maxWidth: 480 }}>
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                  <RSelect.ItemText>{o.label}</RSelect.ItemText>
+                  {o.hint && <span style={{ fontSize: 12, color: C.muted }}>{o.hint}</span>}
+                </span>
+                <RSelect.ItemIndicator><Check size={16} color={C.green} /></RSelect.ItemIndicator>
+              </RSelect.Item>
+            ))}
+          </RSelect.Viewport>
+        </RSelect.Content>
+      </RSelect.Portal>
+    </RSelect.Root>
   );
 }

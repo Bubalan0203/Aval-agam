@@ -6,8 +6,8 @@ import { getEvent, getEventBookings } from "./firestore";
 import { legacySessions } from "./event-sessions";
 
 // These are the same public EmailJS identifiers used by the original booking form.
-const service = "service_ccmza7t";
-const publicKey = "F8QjNtOzTSS8DVitl";
+const service = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || "service_ccmza7t";
+const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || "F8QjNtOzTSS8DVitl";
 const template = process.env.NEXT_PUBLIC_EMAILJS_CANCELLATION_TEMPLATE_ID || "template_eobun16";
 
 /** Browser-based delivery, like confirmations. Keep the page open; failed sends can be retried. */
@@ -34,6 +34,7 @@ export async function sendCancellationEmails(eventId: string) {
     try {
       await emailjs.send(service, template, {
         to_email: booking.email, customer_email: booking.email, customer_name: booking.name,
+        email: booking.email, user_email: booking.email, reply_to: booking.email, to_name: booking.name,
         booking_id: booking.id, event_title: booking.eventTitle,
         event_date: booking.sessionDate ?? session.date,
         event_time: `${booking.sessionStartTime ?? session.startTime}–${booking.sessionEndTime ?? session.endTime} IST`,

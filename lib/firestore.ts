@@ -1,6 +1,6 @@
 import { legacySessions, validateSessions, sessionAvailable, sessionStart, type EventSession } from "./event-sessions";
 import {
-  collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteField, arrayUnion,
+  collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, deleteField, arrayUnion,
   query, orderBy, where, writeBatch, Timestamp, runTransaction, serverTimestamp, addDoc,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -226,16 +226,33 @@ export async function duplicateEvent(id: string): Promise<string> {
   })).id;
 }
 
-export async function deleteEvent(id: string): Promise<void> {
+/** Permanently deletes an event together with all of its bookings. Admin only; can't be undone. */
+export async function deleteEvent(id: string): Promise<{ bookings: number }> {
   signedIn();
   const bookings = await getEventBookings(id);
-  if (bookings.length) throw new Error("Events with bookings can't be deleted. Archive it instead.");
+  for (let i = 0; i < bookings.length; i += 400) {
+    const batch = writeBatch(db);
+    bookings.slice(i, i + 400).forEach(b => batch.delete(doc(db, "bookings", b.id!)));
+    await batch.commit();
+  }
+  await deleteDoc(doc(db, "events", id));
+  return { bookings: bookings.length };
+}
+
+/** Permanently deletes one booking. A confirmed booking's seats go back on sale first. */
+export async function deleteBooking(bookingId: string): Promise<void> {
+  signedIn();
   await runTransaction(db, async tx => {
-    const ref = doc(db, "events", id); const current = await tx.get(ref);
-    if (!current.exists()) return;
-    if (withSessions({ ...current.data(), id }).sessions.some(s => s.status === "cancelled" || Object.values(s.sold).some(n => n > 0)))
-      throw new Error("Events with bookings or cancelled dates can't be deleted. Archive it instead.");
-    tx.delete(ref);
+    const bref = doc(db, "bookings", bookingId); const bsnap = await tx.get(bref);
+    if (!bsnap.exists()) return;
+    const b = normaliseBooking({ id: bookingId, ...bsnap.data() });
+    const eref = doc(db, "events", b.eventId); const esnap = await tx.get(eref);
+    if (esnap.exists() && b.status === "confirmed" && b.seatsHeld !== false) {
+      const sessions = withSessions({ ...esnap.data(), id: b.eventId }).sessions;
+      tx.update(eref, { sessions: sessions.map(s => s.id === b.sessionId
+        ? { ...s, sold: { ...s.sold, [b.ticketTypeId]: Math.max(0, (s.sold[b.ticketTypeId] ?? 0) - b.quantity) } } : s) });
+    }
+    tx.delete(bref);
   });
 }
 
