@@ -2,10 +2,10 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, ImageOff, Plus, Search } from "lucide-react";
-import { getEvents, type Event } from "@/lib/firestore";
+import { CalendarDays, ImageOff, Plus, Search, Trash2 } from "lucide-react";
+import { deleteEvent, getEvents, type Event } from "@/lib/firestore";
 import { formatDateShort, formatTime12, rupees, sessionCapacity, sessionSold, upcomingSessions } from "@/lib/booking-logic";
-import { Badge, Button, C, Card, Empty, EventStatusBadge, PageHeader, PageSkeleton, inputStyle } from "@/components/admin/ui";
+import { Badge, Button, C, Card, ConfirmDialog, Empty, EventStatusBadge, Field, PageHeader, PageSkeleton, inputStyle, useToast } from "@/components/admin/ui";
 
 type Tab = "all" | "upcoming" | "draft";
 const TABS: [Tab, string][] = [["all", "All"], ["upcoming", "Upcoming"], ["draft", "Drafts"]];
@@ -29,7 +29,26 @@ function EventsView() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<Tab>(() => (TABS.some(([t]) => t === params.get("status")) ? params.get("status") as Tab : "all"));
 
+  const [target, setTarget] = useState<Event | null>(null);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { setToast, toastNode } = useToast();
+  const seatsBooked = (e: Event) => e.sessions.reduce((n, x) => n + sessionSold(x), 0);
+
   useEffect(() => { getEvents().then(setEvents).catch(() => setError(true)); }, []);
+
+  async function confirmDelete() {
+    if (!target) return;
+    setBusy(true);
+    try {
+      const r = await deleteEvent(target.id);
+      setEvents(list => (list ?? []).filter(e => e.id !== target.id));
+      setToast({ type: "success", msg: `“${target.title || "Untitled event"}” deleted${r.bookings ? ` with ${r.bookings} booking${r.bookings === 1 ? "" : "s"}` : ""}.` });
+      setTarget(null);
+    } catch {
+      setToast({ type: "error", msg: "Couldn't delete the event. Please try again." });
+    } finally { setBusy(false); }
+  }
 
   const counts = useMemo(() => Object.fromEntries(TABS.map(([t]) => [t, (events ?? []).filter(e => matches(e, t)).length])), [events]);
   const rows = useMemo(() => (events ?? [])
@@ -77,7 +96,8 @@ function EventsView() {
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>Next date</th>
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>Seats (next date)</th>
                   <th style={{ padding: "12px 16px", fontWeight: 500 }}>Price</th>
-                  <th style={{ padding: "12px 20px", fontWeight: 500 }}>Status</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 500 }}>Status</th>
+                  <th style={{ padding: "12px 20px", width: 56 }} aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -108,7 +128,11 @@ function EventsView() {
                         </>) : <span style={{ color: C.muted }}>—</span>}
                       </td>
                       <td style={{ padding: "14px 16px", fontSize: 14, whiteSpace: "nowrap" }}>{prices.length ? (Math.min(...prices) === Math.max(...prices) ? rupees(prices[0]) : `${rupees(Math.min(...prices))}–${rupees(Math.max(...prices))}`) : "—"}</td>
-                      <td style={{ padding: "14px 20px" }}><EventStatusBadge status={e.status} /></td>
+                      <td style={{ padding: "14px 16px" }}><EventStatusBadge status={e.status} /></td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <button type="button" title="Delete event" aria-label={`Delete ${e.title}`} onClick={ev => { ev.stopPropagation(); setTyped(""); setTarget(e); }}
+                          style={{ width: 34, height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#B42318", border: `1px solid ${C.sand}`, background: "#fff" }}><Trash2 size={16} /></button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -117,6 +141,21 @@ function EventsView() {
           </div>
         )}
       </Card>
+
+      {target && (
+        <ConfirmDialog open danger busy={busy} title="Delete this event?" confirmLabel="Delete event"
+          confirmDisabled={seatsBooked(target) > 0 && typed.trim().toUpperCase() !== "DELETE"}
+          message={<>
+            <b>{target.title || "Untitled event"}</b> and all of its dates will be permanently removed.
+            {seatsBooked(target) > 0
+              ? <> It has <b>{seatsBooked(target)} booked seat{seatsBooked(target) === 1 ? "" : "s"}</b> — those bookings will be deleted too. Refund paid customers first if needed.</>
+              : " It has no bookings."} This can&rsquo;t be undone.
+          </>}
+          onCancel={() => setTarget(null)} onConfirm={confirmDelete}>
+          {seatsBooked(target) > 0 && <Field label="Type DELETE to confirm"><input value={typed} onChange={e => setTyped(e.target.value)} style={inputStyle()} autoComplete="off" autoFocus /></Field>}
+        </ConfirmDialog>
+      )}
+      {toastNode}
     </div>
   );
 }

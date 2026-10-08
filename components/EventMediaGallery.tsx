@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Images, Play, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Images, X } from "lucide-react";
 import { normalizeYouTubeUrls } from "@/lib/event-content";
 import { EventVideoPlayer } from "./EventVideos";
 
@@ -10,10 +10,8 @@ const PREVIEW = 5; // tiles shown before "View all"
 /** Videos + full photo gallery. Every photo is reachable (grid preview, "view all", lightbox with arrows/swipe/keys). */
 export function EventMediaGallery({ urls, photos }: { urls?: unknown; photos: string[] }) {
   const videos = normalizeYouTubeUrls(urls).filter((url): url is string => Boolean(url));
-  const [selectedVideo, setSelectedVideo] = useState(0);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const activeVideo = Math.min(selectedVideo, Math.max(0, videos.length - 1));
   if (!videos.length && !photos.length) return null;
 
   const tiles = showAll ? photos : photos.slice(0, PREVIEW);
@@ -47,11 +45,11 @@ export function EventMediaGallery({ urls, photos }: { urls?: unknown; photos: st
         <section aria-label="Event videos">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
             <h2 style={{ fontFamily: "Playfair Display, serif", fontSize: 24, fontWeight: 700, color: G }}>Videos</h2>
-            {videos.length > 1 && <div className="event-video-switch" role="group" aria-label="Choose video">
-              {videos.map((url, i) => <button key={`${url}-${i}`} type="button" aria-pressed={activeVideo === i} onClick={() => setSelectedVideo(i)}><Play size={11} aria-hidden="true" />Video {i + 1}</button>)}
-            </div>}
+            {videos.length > 1 && <span style={{ fontSize: 13, color: "#6B6F64" }}>{videos.length} videos</span>}
           </div>
-          <div className="event-media-frame"><EventVideoPlayer key={`${activeVideo}-${videos[activeVideo]}`} url={videos[activeVideo]} title={`Event video ${activeVideo + 1}`} /></div>
+          <div className="event-video-grid">
+            {videos.map((url, i) => <div key={`${url}-${i}`} className="event-media-frame"><EventVideoPlayer url={url} title={`Event video ${i + 1}`} /></div>)}
+          </div>
         </section>
       )}
 
