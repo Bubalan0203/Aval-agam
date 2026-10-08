@@ -3,7 +3,7 @@ import emailjs from "@emailjs/browser";
 import { formatDateLong, formatTime12, rupees } from "./booking-logic";
 
 // EmailJS identifiers are public by design; env vars allow rotating them without a code change.
-export const EMAILJS_SERVICE_ID  = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID  || "service_ccmza7t";
+export const EMAILJS_SERVICE_ID  = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID  || "service_7dbj13y";
 export const EMAILJS_PUBLIC_KEY  = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY  || "F8QjNtOzTSS8DVitl";
 const CONFIRMATION_TEMPLATE_ID   = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "template_ro58gnx";
 const CANCELLATION_TEMPLATE_ID   = process.env.NEXT_PUBLIC_EMAILJS_CANCELLATION_TEMPLATE_ID || "template_eobun16";

@@ -7,7 +7,7 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { isAdmin } from "@/lib/firestore";
 import { confirmLeave } from "@/lib/unsaved";
-import { CalendarDays, ExternalLink, LayoutDashboard, LogOut, Menu, Plus, Ticket, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, LayoutDashboard, LogOut, Menu, Plus, Ticket, X } from "lucide-react";
 import { Button, C } from "@/components/admin/ui";
 
 const NAV = [
@@ -24,6 +24,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const menuOpen = menuPath === pathname; // closes automatically after navigating
   const setMenuOpen = (v: boolean) => setMenuPath(v ? pathname : null);
+  const [collapsed, setCollapsed] = useState(() => { try { return typeof window !== "undefined" && localStorage.getItem("admin-sidebar") === "collapsed"; } catch { return false; } });
+  const toggleCollapsed = () => setCollapsed(v => { try { localStorage.setItem("admin-sidebar", v ? "open" : "collapsed"); } catch { /* storage blocked */ } return !v; });
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -50,42 +52,49 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 
-  const nav = (
-    <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {NAV.map(({ href, label, Icon }) => (
-        <Link key={href} href={href} className="admin-nav-link" data-active={pathname.startsWith(href)}
-          onClick={e => { if (!confirmLeave()) e.preventDefault(); }}>
-          <Icon size={18} /> {label}
-        </Link>
-      ))}
-    </nav>
+  const navLink = (href: string, label: string, Icon: typeof Plus, compact: boolean) => (
+    <Link key={href} href={href} className="admin-nav-link" data-active={pathname.startsWith(href)} title={compact ? label : undefined}
+      style={compact ? { justifyContent: "center", padding: "10px 0" } : undefined}
+      onClick={e => { if (!confirmLeave()) e.preventDefault(); }}>
+      <Icon size={18} /> {!compact && label}
+    </Link>
   );
 
-  const sidebar = (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "20px 16px" }}>
-      <Link href="/admin/dashboard" onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px 20px" }}>
-        <Image src="/logo.png" alt="" width={32} height={32} style={{ objectFit: "contain" }} />
-        <div>
-          <p style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>Aval Agam</p>
-          <p style={{ fontSize: 12, color: C.muted }}>Admin</p>
-        </div>
+  const sidebar = (compact: boolean) => (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: compact ? "20px 12px" : "20px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: compact ? "center" : "space-between", gap: 8, padding: compact ? "0 0 20px" : "0 4px 20px 8px" }}>
+        <Link href="/admin/dashboard" onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <Image src="/logo.png" alt="" width={32} height={32} style={{ objectFit: "contain", flexShrink: 0 }} />
+          {!compact && <div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>Aval Agam</p>
+            <p style={{ fontSize: 12, color: C.muted }}>Admin</p>
+          </div>}
+        </Link>
+      </div>
+      <Link href="/admin/events/create" title={compact ? "New event" : undefined} onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ marginBottom: 16 }}>
+        <Button style={{ width: "100%", padding: compact ? 0 : undefined }}><Plus size={16} />{!compact && " New event"}</Button>
       </Link>
-      <Link href="/admin/events/create" onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ marginBottom: 16 }}>
-        <Button style={{ width: "100%" }}><Plus size={16} /> New event</Button>
-      </Link>
-      {nav}
+      <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>{NAV.map(({ href, label, Icon }) => navLink(href, label, Icon, compact))}</nav>
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 2, borderTop: `1px solid ${C.sand}`, paddingTop: 12 }}>
-        <a href="/" target="_blank" rel="noopener noreferrer" className="admin-nav-link"><ExternalLink size={18} /> View website</a>
-        <button onClick={logout} className="admin-nav-link" style={{ width: "100%", textAlign: "left" }}><LogOut size={18} /> Sign out</button>
-        <p style={{ fontSize: 12, color: C.muted, padding: "8px 12px 0", overflow: "hidden", textOverflow: "ellipsis" }} title={user?.email ?? ""}>{user?.email}</p>
+        <a href="/" target="_blank" rel="noopener noreferrer" className="admin-nav-link" title={compact ? "View website" : undefined} style={compact ? { justifyContent: "center", padding: "10px 0" } : undefined}><ExternalLink size={18} />{!compact && " View website"}</a>
+        <button onClick={logout} className="admin-nav-link" title={compact ? "Sign out" : undefined} style={{ width: "100%", textAlign: "left", ...(compact ? { justifyContent: "center", padding: "10px 0" } : {}) }}><LogOut size={18} />{!compact && " Sign out"}</button>
+        {!compact && <p style={{ fontSize: 12, color: C.muted, padding: "8px 12px 0", overflow: "hidden", textOverflow: "ellipsis" }} title={user?.email ?? ""}>{user?.email}</p>}
       </div>
     </div>
   );
 
+  const width = collapsed ? 76 : 260;
+
   return (
-    <div className="admin-root" style={{ minHeight: "100vh" }}>
+    <div className="admin-root" style={{ minHeight: "100vh", ["--side" as string]: `${width}px` }}>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block" style={{ position: "fixed", top: 0, bottom: 0, left: 0, width: 260, background: "#fff", borderRight: `1px solid ${C.sand}`, zIndex: 40 }}>{sidebar}</aside>
+      <aside className="hidden lg:block" style={{ position: "fixed", top: 0, bottom: 0, left: 0, width, background: "#fff", borderRight: `1px solid ${C.sand}`, zIndex: 40, transition: "width .2s" }}>
+        {sidebar(collapsed)}
+        <button type="button" onClick={toggleCollapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={{ position: "absolute", top: 26, right: -13, width: 26, height: 26, borderRadius: 999, background: "#fff", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: C.ink, boxShadow: "0 1px 3px rgba(16,24,40,.1)" }}>
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+      </aside>
 
       {/* Mobile top bar */}
       <header className="flex lg:hidden" style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", borderBottom: `1px solid ${C.sand}`, height: 60, alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
@@ -100,13 +109,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div onClick={() => setMenuOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(16,24,40,.45)" }} />
           <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 280, background: "#fff" }}>
             <button aria-label="Close menu" onClick={() => setMenuOpen(false)} style={{ position: "absolute", top: 18, right: 14, color: C.muted }}><X size={20} /></button>
-            {sidebar}
+            {sidebar(false)}
           </div>
         </div>
       )}
 
-      <main className="lg:pl-[260px]">
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 16px 80px" }} className="lg:px-8">{children}</div>
+      <main className="lg:pl-[var(--side)]" style={{ transition: "padding .2s" }}>
+        <div style={{ maxWidth: 1600, margin: "0 auto", padding: "28px 16px 80px" }} className="lg:px-8">{children}</div>
       </main>
     </div>
   );

@@ -1,16 +1,16 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Circle, Copy, ExternalLink, Plus, Repeat, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AlertCircle, ArrowLeft, CalendarDays, Check, ChevronDown, Circle, Copy, ExternalLink, Plus, Repeat, Ticket, Trash2 } from "lucide-react";
 import { createEvent, updateEvent, validateEventInput, type Event, type EventInput, type EventStatus } from "@/lib/firestore";
 import { localToday, sessionStart, type EventSession } from "@/lib/event-sessions";
-import { repeatDates, formatDateShort, rupees } from "@/lib/booking-logic";
+import { repeatDates, formatDateLong, formatDateShort, formatTime12, rupees } from "@/lib/booking-logic";
 import { normalizeYouTubeUrls, safeExternalUrl, youtubeVideoId, descriptionText } from "@/lib/event-content";
 import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
 import { setUnsaved, confirmLeave } from "@/lib/unsaved";
 import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
 import { ImageUploader } from "./ImageUploader";
-import { Badge, Button, C, Card, EventStatusBadge, Field, PageHeader, Select, inputStyle, shadow, useToast } from "./ui";
+import { Accordion, Badge, Button, C, EventStatusBadge, Field, PageHeader, Select, inputStyle, shadow, useToast } from "./ui";
 
 type TicketDraft = { id: string; name: string; price: string; available: string };
 
@@ -26,8 +26,33 @@ function sessionRowError(s: EventSession, all: EventSession[], now: number): str
   if (!s.date || !s.startTime || !s.endTime) return "Fill in date, start and end.";
   if (s.endTime <= s.startTime) return "End time must be after start time.";
   if (sessionStart(s) <= now) return "This time is in the past.";
-  if (all.some(o => o.id !== s.id && o.status !== "cancelled" && o.date === s.date && o.startTime === s.startTime)) return "Duplicate of another date.";
+  const clash = all.find(o => o.id !== s.id && o.status !== "cancelled" && o.date === s.date && o.startTime && o.endTime && s.startTime < o.endTime && o.startTime < s.endTime);
+  if (clash) return `Overlaps another active date (${formatTime12(clash.startTime)} – ${formatTime12(clash.endTime)}).`;
   return null;
+}
+
+type SectionSummary = { text: string; ok: boolean; optional?: boolean };
+
+/** Collapsible form section: closed it shows what's filled in; open it shows the inputs. */
+function EditorSection({ id, n, title, subtitle, open, onToggle, sum, hidden, hasError, children }: { id: string; n: number; title: string; subtitle: string; open: boolean; onToggle: () => void; sum: SectionSummary; hidden: boolean; hasError: boolean; children: React.ReactNode }) {
+  if (hidden) return null;
+  const done = sum.ok && !sum.optional;
+  return (
+    <section id={id} style={{ background: "#fff", border: `1px solid ${hasError ? "#FDA29B" : open ? C.border : C.sand}`, borderRadius: 12, boxShadow: open ? shadow : "none", scrollMarginTop: 24, overflow: "hidden" }}>
+      <button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", textAlign: "left" }}>
+        <span style={{ width: 30, height: 30, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: hasError ? C.claySoft : done ? C.goodSoft : C.bg, color: hasError ? C.red : done ? C.good : C.ink, border: `1px solid ${hasError ? "#FDA29B" : done ? "#ABEFC6" : C.sand}` }}>
+          {hasError ? <AlertCircle size={15} /> : done ? <Check size={15} strokeWidth={3} /> : n}
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 16, fontWeight: 600, color: C.text }}>{title}</span>
+          <span style={{ display: "block", fontSize: 13, color: open ? C.muted : sum.ok ? C.ink : C.gold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open ? subtitle : sum.text}</span>
+        </span>
+        {!open && <Badge tone={hasError ? "bad" : sum.optional ? "neutral" : sum.ok ? "good" : "warn"}>{hasError ? "Fix" : sum.optional ? "Optional" : sum.ok ? "Done" : "Missing"}</Badge>}
+        <ChevronDown size={18} color={C.muted} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+      </button>
+      {open && <div style={{ padding: "16px 20px 20px", borderTop: `1px solid ${C.sand}` }}>{children}</div>}
+    </section>
+  );
 }
 
 export function EventEditor({ initial }: { initial?: Event }) {
@@ -54,6 +79,14 @@ export function EventEditor({ initial }: { initial?: Event }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [repeat, setRepeat] = useState({ count: "4", every: "7" });
   const [showLocked, setShowLocked] = useState(false);
+  // Sections: all open for a new event; collapsed (with a summary) when editing. ?section=dates shows only that section.
+  const params = useSearchParams();
+  const [only, setOnly] = useState(() => params.get("section") ?? "");
+  const [openSections, setOpenSections] = useState<Set<string>>(() => new Set(params.get("section") ? [params.get("section")!] : initial ? [] : ["basics", "dates", "tickets", "images", "description", "videos"]));
+  const toggleSection = (id: string) => setOpenSections(o => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Dates collapse once filled in; new or incomplete ones stay open.
+  const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
+  const toggleRow = (id: string) => setOpenRows(o => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const setDirty = useCallback((v: boolean) => { setDirtyState(v); setUnsaved(v); }, []);
   useEffect(() => () => setUnsaved(false), []);
@@ -133,6 +166,9 @@ export function EventEditor({ initial }: { initial?: Event }) {
     setErrors(e);
     const firstKey = Object.keys(e)[0];
     if (firstKey) {
+      const sec = FIELD_SECTION[firstKey] ?? "basics";
+      if (only && only !== sec) setOnly("");
+      setOpenSections(o => new Set([...o, sec]));
       document.getElementById(FIELD_SECTION[firstKey] ?? "basics")?.scrollIntoView({ behavior: "smooth" });
       setToast({ type: "error", msg: Object.values(e)[0] });
       return;
@@ -167,7 +203,7 @@ export function EventEditor({ initial }: { initial?: Event }) {
   function addRepeats() {
     const base = [...sessions].reverse().find(s => s.date && s.startTime && s.endTime);
     if (!base) { setErrors(e => ({ ...e, sessions: "Fill in one date first, then repeat it." })); return; }
-    const extra = repeatDates(base, Number(repeat.count), Number(repeat.every)).filter(d => !sessions.some(s => s.date === d.date && s.startTime === base.startTime));
+    const extra = repeatDates(base, Number(repeat.count), Number(repeat.every)).filter(d => !sessions.some(s => s.status !== "cancelled" && s.date === d.date && s.startTime === base.startTime));
     setDirty(true);
     setSessions(list => [...list.filter(s => s.date || original.some(o => o.id === s.id)), ...extra.map(d => newSession(d))]);
     setToast({ type: "success", msg: `Added ${extra.length} date${extra.length === 1 ? "" : "s"}.` });
@@ -187,37 +223,70 @@ export function EventEditor({ initial }: { initial?: Event }) {
     const saved = original.some(o => o.id === s.id);
     const booked = Object.values(s.sold).reduce((a, b) => a + b, 0);
     const err = lock ? null : sessionRowError(s, sessions, now);
+    const complete = !!(s.date && s.startTime && s.endTime);
+    const open = openRows.has(s.id) || !complete || !!err;
+    const tone = lock === "Cancelled" ? "bad" : lock === "Completed" ? "muted" : undefined;
     return (
-      <div key={s.id} style={{ padding: 14, borderRadius: 10, background: lock ? C.bg : "#fff", border: `1px solid ${err ? "#FDA29B" : C.sand}` }}>
-        <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_1fr_1fr_auto] gap-3" style={{ alignItems: "end" }}>
+      <Accordion key={s.id} open={open} onToggle={() => toggleRow(s.id)} tone={tone}
+        header={<div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <span style={{ width: 42, flexShrink: 0, textAlign: "center", borderRadius: 8, overflow: "hidden", border: `1px solid ${C.sand}`, background: "#fff" }}>
+            <span style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: ".06em", color: "#fff", background: lock === "Cancelled" ? C.red : C.green, padding: "2px 0" }}>{s.date ? new Date(`${s.date}T00:00:00`).toLocaleDateString("en-IN", { month: "short" }).toUpperCase() : "NEW"}</span>
+            <span style={{ display: "block", fontSize: 16, fontWeight: 700, color: C.text, padding: "2px 0" }}>{s.date ? Number(s.date.slice(8)) : "–"}</span>
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.text, textDecoration: lock === "Cancelled" ? "line-through" : "none" }}>{s.date ? formatDateLong(s.date) : "New date"}</span>
+            <span style={{ display: "block", fontSize: 13, color: err ? C.red : C.ink }}>{err ?? (complete ? `${formatTime12(s.startTime)} – ${formatTime12(s.endTime)} IST` : "Pick a date and time")}</span>
+          </span>
+        </div>}
+        right={<div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          {lock ? <Badge tone={lock === "Cancelled" ? "bad" : lock === "Has bookings" ? "brand" : "neutral"}>{lock}{booked ? ` · ${booked} booked` : ""}</Badge> : saved ? <Badge tone="good" dot>Open</Badge> : <Badge tone="warn">New</Badge>}
+          <Button variant="ghost" size="sm" title="Copy to the following week" aria-label="Copy to the following week" disabled={!s.date || !s.startTime} onClick={() => { const [d] = repeatDates(s, 1, 7); if (d && !sessions.some(x => x.status !== "cancelled" && x.date === d.date && x.startTime === s.startTime)) { setDirty(true); setSessions(l => [...l, newSession({ ...d, startTime: s.startTime, endTime: s.endTime })]); } }}><Copy size={15} /></Button>
+          {!saved && <Button variant="ghost" size="sm" aria-label="Remove date" onClick={() => { setDirty(true); setSessions(l => l.filter(x => x.id !== s.id)); }}><Trash2 size={15} /></Button>}
+        </div>}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" style={{ paddingTop: 12 }}>
           <Field label="Date"><input type="date" min={lock ? undefined : localToday()} value={s.date} disabled={!!lock} onChange={e => updateSession(s.id, "date", e.target.value)} style={inputStyle(!!err)} /></Field>
           <Field label="Starts">{timeSelect(s, "startTime", !!lock, !!err)}</Field>
           <Field label="Ends">{timeSelect(s, "endTime", !!lock, !!err)}</Field>
-          <div style={{ display: "flex", gap: 4, alignItems: "center", paddingBottom: 2 }}>
-            <Button variant="ghost" title="Copy to the following week" aria-label="Copy to the following week" disabled={!s.date || !s.startTime} onClick={() => { const [d] = repeatDates(s, 1, 7); if (d && !sessions.some(x => x.date === d.date && x.startTime === s.startTime)) { setDirty(true); setSessions(l => [...l, newSession({ ...d, startTime: s.startTime, endTime: s.endTime })]); } }}><Copy size={16} /></Button>
-            {!saved && <Button variant="ghost" aria-label="Remove date" onClick={() => { setDirty(true); setSessions(l => l.filter(x => x.id !== s.id)); }}><Trash2 size={16} /></Button>}
-          </div>
         </div>
-        {(lock || err) && (
-          <p style={{ fontSize: 13, marginTop: 8, color: err ? C.red : C.ink, display: "flex", gap: 8, alignItems: "center" }}>
-            {lock && <Badge tone={lock === "Cancelled" ? "bad" : lock === "Has bookings" ? "brand" : "neutral"}>{lock}{booked ? ` · ${booked} booked` : ""}</Badge>}
-            {err ?? (lock === "Has bookings" ? "Locked because people have booked. Cancel it from the event page if needed." : null)}
-          </p>
-        )}
-      </div>
+        {lock && <p style={{ fontSize: 13, marginTop: 10, color: C.ink }}>{lock === "Has bookings" ? "Locked because people have booked. Cancel it from the event page if needed." : lock === "Cancelled" ? "Cancelled dates stay for your records. You can add the same date again as a new date." : "This date has already happened."}</p>}
+      </Accordion>
     );
   };
 
-  const sectionTitle = (n: number, t: string) => `${n}. ${t}`;
+  const upcomingDates = sessions.filter(x => x.date && x.startTime && x.status === "scheduled" && sessionStart(x) > now).sort((a, b) => sessionStart(a) - sessionStart(b));
+  const words = descriptionText(form.description, "html").trim().split(/\s+/).filter(Boolean).length;
+  const videoCount: number = videos.filter(v => youtubeVideoId(v)).length;
+  const summary: Record<string, SectionSummary> = {
+    basics: { text: [form.title.trim(), form.category, form.location.trim()].filter(Boolean).join(" · ") || "Title, category and venue", ok: checklist[0].ok && checklist[1].ok },
+    dates: { text: upcomingDates.length ? `${upcomingDates.length} upcoming date${upcomingDates.length === 1 ? "" : "s"} · next ${formatDateShort(upcomingDates[0].date)}, ${formatTime12(upcomingDates[0].startTime)}` : "No upcoming dates", ok: checklist[2].ok },
+    tickets: { text: tickets.filter(t => t.name.trim()).map(t => `${t.name.trim()} ${Number(t.price) > 0 ? rupees(Number(t.price)) : "Free"} · ${t.available || 0} seats`).join("  |  ") || "No tickets", ok: checklist[3].ok },
+    images: { text: images.cover ? `Cover image + ${images.gallery.length} gallery photo${images.gallery.length === 1 ? "" : "s"}` : "No cover image", ok: checklist[4].ok },
+    description: { text: words ? `${words} words · ${descriptionText(form.description, "html").trim().slice(0, 80)}${words > 12 ? "…" : ""}` : "Empty", ok: checklist[5].ok },
+    videos: { text: videoCount ? `${videoCount} YouTube video${videoCount === 1 ? "" : "s"}` : "None (optional)", ok: true, optional: true },
+  };
+
+  const sec = (id: string, n: number, title: string, subtitle: string) => ({
+    id, n, title, subtitle, open: openSections.has(id), onToggle: () => toggleSection(id), sum: summary[id],
+    hidden: !!only && only !== id, hasError: Object.keys(errors).some(k => (FIELD_SECTION[k] ?? "basics") === id),
+  });
+
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader title={isEdit ? form.title || "Edit event" : "New event"} badge={<>{isEdit && <EventStatusBadge status={status} />}{dirty && <Badge tone="warn">Unsaved changes</Badge>}</>}
         back={<button onClick={() => { if (confirmLeave()) router.push(isEdit ? `/admin/events/${initial!.id}` : "/admin/events"); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, color: C.ink }}><ArrowLeft size={16} /> {isEdit ? "Back to event" : "Events"}</button>} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6" style={{ alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
-          <Card id="basics" title={sectionTitle(1, "Basics")} subtitle="What customers see first.">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6" style={{ alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 13, color: C.ink }}>
+            {only ? <span>Editing <b style={{ color: C.text }}>dates only</b>. <button type="button" style={{ fontWeight: 600, color: C.green }} onClick={() => setOnly("")}>Show all sections</button></span>
+              : <span>{Object.values(summary).filter(x => x.ok && !x.optional).length} of 5 required sections complete</span>}
+            {!only && <span style={{ display: "flex", gap: 12 }}>
+              <button type="button" style={{ fontWeight: 600, color: C.green }} onClick={() => setOpenSections(new Set(Object.keys(summary)))}>Expand all</button>
+              <button type="button" style={{ fontWeight: 600, color: C.green }} onClick={() => setOpenSections(new Set())}>Collapse all</button>
+            </span>}
+          </div>
+          <EditorSection {...sec("basics", 1, "Basics", "What customers see first.")}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2"><Field label="Event title" required error={errors.title}><input value={form.title} maxLength={140} onChange={e => setField("title", e.target.value)} style={inputStyle(!!errors.title)} placeholder="e.g. Mindful Reset Workshop" /></Field></div>
               <Field label="Category" required error={errors.category}>
@@ -227,10 +296,19 @@ export function EventEditor({ initial }: { initial?: Event }) {
               <Field label="Venue" required error={errors.location} hint="e.g. “Online · Zoom” or a place and city"><input value={form.location} onChange={e => setField("location", e.target.value)} style={inputStyle(!!errors.location)} /></Field>
               <div className="md:col-span-2"><Field label="Google Maps link" hint="Optional — shown as “Open in Maps”" error={errors.locationUrl}><input value={form.locationUrl} onChange={e => setField("locationUrl", e.target.value)} style={inputStyle(!!errors.locationUrl)} placeholder="https://maps.app.goo.gl/…" /></Field></div>
             </div>
-          </Card>
+          </EditorSection>
 
-          <Card id="dates" title={sectionTitle(2, "Dates & times")} subtitle="All times are IST. Each date has its own seats.">
+          <EditorSection {...sec("dates", 2, "Dates & times", "All times are IST. Each date has its own seats.")}>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {editableSessions.length > 1 && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, color: C.ink }}>
+                  <span>{editableSessions.filter(x => x.date).length} date{editableSessions.filter(x => x.date).length === 1 ? "" : "s"}</span>
+                  <span style={{ display: "flex", gap: 12 }}>
+                    <button type="button" style={{ fontWeight: 600, color: C.green }} onClick={() => setOpenRows(new Set(sessions.map(x => x.id)))}>Expand all</button>
+                    <button type="button" style={{ fontWeight: 600, color: C.green }} onClick={() => setOpenRows(new Set())}>Collapse all</button>
+                  </span>
+                </div>
+              )}
               {lockedSessions.length > 0 && (
                 <button onClick={() => setShowLocked(v => !v)} style={{ alignSelf: "flex-start", fontSize: 13, fontWeight: 600, color: C.ink }}>{showLocked ? "Hide" : "Show"} {lockedSessions.length} past or cancelled date{lockedSessions.length === 1 ? "" : "s"}</button>
               )}
@@ -249,9 +327,9 @@ export function EventEditor({ initial }: { initial?: Event }) {
                 <Button variant="secondary" onClick={addRepeats}>Add</Button>
               </div>
             </div>
-          </Card>
+          </EditorSection>
 
-          <Card id="tickets" title={sectionTitle(3, "Tickets")} subtitle="Seats are per date. Use price 0 for a free ticket.">
+          <EditorSection {...sec("tickets", 3, "Tickets", "Seats are per date. Use price 0 for a free ticket.")}>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {tickets.map((t, i) => {
                 const sold = soldByTicket[t.id] ?? 0;
@@ -271,24 +349,24 @@ export function EventEditor({ initial }: { initial?: Event }) {
             </div>
             {errors.tickets && <p role="alert" style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{errors.tickets}</p>}
             <div style={{ marginTop: 14 }}><Button variant="secondary" onClick={() => touch(setTickets)([...tickets, { id: crypto.randomUUID(), name: "", price: "", available: "" }])}><Plus size={16} /> Add ticket type</Button></div>
-          </Card>
+          </EditorSection>
 
-          <Card id="images" title={sectionTitle(4, "Images")} subtitle="One cover (banner) image plus up to 4 gallery photos.">
+          <EditorSection {...sec("images", 4, "Images", "One cover (banner) image plus up to 4 gallery photos.")}>
             <ImageUploader cover={images.cover} gallery={images.gallery} onChange={touch(setImages)} onBusyChange={setUploading} error={errors.image} />
-          </Card>
+          </EditorSection>
 
-          <Card id="description" title={sectionTitle(5, "Description")} subtitle="What happens, who it's for, what to bring.">
+          <EditorSection {...sec("description", 5, "Description", "What happens, who it's for, what to bring.")}>
             <EventDescriptionEditor value={form.description} format={initial?.descriptionFormat ?? "html"} onChange={v => setField("description", v)} />
             {errors.description && <p role="alert" style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{errors.description}</p>}
-          </Card>
+          </EditorSection>
 
-          <Card id="videos" title={sectionTitle(6, "Videos")} subtitle="Optional — up to two YouTube links.">
+          <EditorSection {...sec("videos", 6, "Videos", "Optional — up to two YouTube links.")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {videos.map((v, i) => (
                 <Field key={i} label={`YouTube link ${i + 1}`} error={v.trim() && !youtubeVideoId(v) ? "Not a valid YouTube link" : undefined}><input type="url" value={v} placeholder="https://youtu.be/…" onChange={e => { const n: [string, string] = [...videos]; n[i] = e.target.value; touch(setVideos)(n); }} style={inputStyle(!!v.trim() && !youtubeVideoId(v))} /></Field>
               ))}
             </div>
-          </Card>
+          </EditorSection>
         </div>
 
         {/* Side panel: status, checklist, actions */}
@@ -298,7 +376,7 @@ export function EventEditor({ initial }: { initial?: Event }) {
             <p style={{ fontSize: 13, color: C.ink, marginTop: 2 }}>{status === "published" ? "Changes go live as soon as you save." : status === "archived" ? "Hidden from the website." : ready ? "Everything's ready to publish." : "Complete these to publish:"}</p>
             <ul style={{ display: "flex", flexDirection: "column", gap: 8, margin: "14px 0 18px" }}>
               {checklist.map(c => (
-                <li key={c.label}><a href={`#${c.section}`} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, color: c.ok ? C.text : C.ink }}>
+                <li key={c.label}><a href={`#${c.section}`} onClick={e => { e.preventDefault(); setOnly(""); setOpenSections(o => new Set([...o, c.section])); setTimeout(() => document.getElementById(c.section)?.scrollIntoView({ behavior: "smooth" }), 50); }} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, color: c.ok ? C.text : C.ink }}>
                   {c.ok ? <span style={{ width: 18, height: 18, borderRadius: 999, background: C.goodSoft, color: C.good, display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} strokeWidth={3} /></span> : <Circle size={18} color={C.border} />}
                   {c.label}
                 </a></li>
@@ -313,9 +391,38 @@ export function EventEditor({ initial }: { initial?: Event }) {
             </div>
             {uploading && <p style={{ fontSize: 13, color: C.gold, marginTop: 10 }}>Waiting for images to finish uploading…</p>}
           </div>
-          <div className="hidden xl:block" style={{ fontSize: 13, color: C.ink, padding: "0 4px" }}>
-            {tickets.filter(t => t.name).map(t => <p key={t.id}>{t.name}: {rupees(Number(t.price) || 0)} · {t.available || 0} seats</p>)}
-            {sessions.filter(s => s.date && sessionStart(s) > now && s.status === "scheduled").slice(0, 4).map(s => <p key={s.id}>{formatDateShort(s.date)}</p>)}
+          <div className="hidden xl:block" style={{ background: "#fff", border: `1px solid ${C.sand}`, borderRadius: 12, boxShadow: shadow, overflow: "hidden" }}>
+            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.sand}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ fontSize: 14, fontWeight: 600 }}>Live summary</p>
+              <span style={{ fontSize: 12, color: C.muted }}>Updates as you type</span>
+            </div>
+            <div style={{ padding: "14px 20px" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: ".06em", display: "flex", alignItems: "center", gap: 6 }}><Ticket size={13} /> Tickets</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                {tickets.filter(t => t.name.trim()).length === 0 && <p style={{ fontSize: 13, color: C.muted }}>No tickets yet.</p>}
+                {tickets.filter(t => t.name.trim()).map(t => (
+                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 8, background: C.bg, border: `1px solid ${C.sand}` }}>
+                    <div><p style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</p><p style={{ fontSize: 12, color: C.ink }}>{t.available || 0} seats per date</p></div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: Number(t.price) > 0 ? C.text : C.good }}>{Number(t.price) > 0 ? rupees(Number(t.price)) : "Free"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: "14px 20px 18px", borderTop: `1px solid ${C.sand}` }}>
+              {(() => {
+                const up = sessions.filter(s => s.date && s.startTime && sessionStart(s) > now && s.status === "scheduled").sort((a, b) => sessionStart(a) - sessionStart(b));
+                return <>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: ".06em", display: "flex", alignItems: "center", gap: 6 }}><CalendarDays size={13} /> Upcoming dates · {up.length}</p>
+                  {up.length === 0 ? <p style={{ fontSize: 13, color: C.muted, marginTop: 10 }}>No upcoming dates.</p> : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                      {up.slice(0, 12).map(s => <span key={s.id} style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: C.greenSoft, color: C.green, border: "1px solid #D5E3DD" }}>{formatDateShort(s.date)} · {formatTime12(s.startTime)}</span>)}
+                      {up.length > 12 && <span style={{ fontSize: 12, color: C.ink, padding: "5px 4px" }}>+{up.length - 12} more</span>}
+                    </div>
+                  )}
+                  {up.length > 0 && tickets.length > 0 && <p style={{ fontSize: 12, color: C.ink, marginTop: 12 }}>Total capacity: <b style={{ color: C.text }}>{up.length * tickets.reduce((n, t) => n + (Number(t.available) || 0), 0)}</b> seats across all dates</p>}
+                </>;
+              })()}
+            </div>
           </div>
         </aside>
       </div>

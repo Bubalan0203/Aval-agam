@@ -4,7 +4,7 @@ import { Download, Plus, Search, Ticket } from "lucide-react";
 import type { Booking, BookingStatus, Event } from "@/lib/firestore";
 import { amountMismatch, formatDateShort, formatTime12, rupees } from "@/lib/booking-logic";
 import { BookingDetailDialog, ManualBookingDialog, exportBookingsCsv } from "./BookingTools";
-import { Badge, BookingStatusBadge, BOOKING_STATUS_LABEL, Button, C, Card, Empty, Select, inputStyle } from "./ui";
+import { Badge, BookingStatusBadge, BOOKING_STATUS_LABEL, Button, C, Card, Empty, Pager, Select, inputStyle } from "./ui";
 
 export type BookingFlag = "" | "amount" | "email";
 
@@ -23,6 +23,7 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
   const [flag, setFlag] = useState<BookingFlag>(initialFlag);
   const [openId, setOpenId] = useState<string | undefined>(initialOpenId);
   const [manual, setManual] = useState(false);
+  const [page, setPage] = useState(0);
   const eventsById = useMemo(() => new Map(events.map(e => [e.id, e])), [events]);
   const sessions = eventId ? [...(eventsById.get(eventId)?.sessions ?? [])].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)) : [];
   const open = bookings.find(b => b.id === openId) ?? null;
@@ -36,6 +37,8 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
       (!s || [b.id, b.name, b.email, b.phone, b.paymentId, b.eventTitle].some(v => v?.toLowerCase().includes(s))));
   }, [bookings, q, eventId, sessionId, status, flag, eventsById]);
 
+  const pg = Math.min(page, Math.max(0, Math.ceil(rows.length / 10) - 1));
+  const pageRows = rows.slice(pg * 10, pg * 10 + 10);
   const confirmed = rows.filter(b => b.status === "confirmed");
   const seats = confirmed.reduce((n, b) => n + b.quantity, 0);
   const revenue = confirmed.reduce((n, b) => n + b.amount, 0);
@@ -66,10 +69,10 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
         {filtered && <Button variant="ghost" onClick={() => { setQ(""); if (!fixedEventId) setEventId(""); setSessionId(""); setStatus(""); setFlag(""); }}>Clear filters</Button>}
       </div>
 
-      {rows.length === 0 ? <Empty icon={<Ticket size={22} />}>{filtered ? "No bookings match these filters." : "No bookings yet."}</Empty> : (
+      {rows.length === 0 ? <div className="admin-table-wrap admin-table-empty"><Empty icon={<Ticket size={22} />}>{filtered ? "No bookings match these filters." : "No bookings yet."}</Empty></div> : (
         <>
           {/* Desktop table */}
-          <div className="hidden md:block" style={{ overflowX: "auto" }}>
+          <div className="hidden md:block admin-table-wrap">
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: C.bg, textAlign: "left", fontSize: 12, color: C.ink }}>
@@ -82,7 +85,7 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
                 </tr>
               </thead>
               <tbody>
-                {rows.map(b => (
+                {pageRows.map(b => (
                   <tr key={b.id} className="admin-row" onClick={() => setOpenId(b.id)} style={{ borderTop: `1px solid ${C.sand}`, cursor: "pointer", fontSize: 14 }}>
                     <td style={{ padding: "14px 20px" }}><p style={{ fontWeight: 500 }}>{b.name}</p><p style={{ fontSize: 13, color: C.ink }}>{b.email}</p></td>
                     {!fixedEventId && <td style={{ padding: "14px 16px", maxWidth: 240, color: C.ink }}><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{b.eventTitle}</span></td>}
@@ -102,8 +105,8 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
             </table>
           </div>
           {/* Mobile cards */}
-          <div className="md:hidden">
-            {rows.map(b => (
+          <div className="md:hidden admin-table-wrap">
+            {pageRows.map(b => (
               <button key={b.id} onClick={() => setOpenId(b.id)} className="admin-row" style={{ display: "block", width: "100%", textAlign: "left", padding: 16, borderTop: `1px solid ${C.sand}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <p style={{ fontWeight: 600, fontSize: 14 }}>{b.name}</p><p style={{ fontWeight: 600, fontSize: 14 }}>{rupees(b.amount)}</p>
@@ -113,6 +116,7 @@ export function BookingsTable({ bookings, events, fixedEventId, onChanged, title
               </button>
             ))}
           </div>
+          <Pager page={pg} total={rows.length} perPage={10} onPage={setPage} label="bookings" />
         </>
       )}
 

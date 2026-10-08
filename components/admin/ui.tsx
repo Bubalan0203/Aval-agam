@@ -248,3 +248,43 @@ export function Select({ value, onChange, options, placeholder = "Select…", er
     </RSelect.Root>
   );
 }
+
+/** "Showing 1–10 of 34" with previous / next and page numbers. */
+export function Pager({ page, total, perPage, onPage, label = "items" }: { page: number; total: number; perPage: number; onPage: (p: number) => void; label?: string }) {
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  if (total === 0) return null;
+  const from = page * perPage + 1, to = Math.min(total, (page + 1) * perPage);
+  const nums = Array.from({ length: pages }, (_, i) => i).filter(i => i === 0 || i === pages - 1 || Math.abs(i - page) <= 1);
+  const btn = (active: boolean): React.CSSProperties => ({ minWidth: 34, height: 34, padding: "0 10px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: `1px solid ${active ? C.green : C.sand}`, background: active ? C.green : "#fff", color: active ? "#fff" : C.text });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 20px", borderTop: `1px solid ${C.sand}` }}>
+      <span style={{ fontSize: 13, color: C.ink }}>Showing <b style={{ color: C.text }}>{from}–{to}</b> of <b style={{ color: C.text }}>{total}</b> {label} · Page <b style={{ color: C.text }}>{page + 1}</b> of <b style={{ color: C.text }}>{pages}</b></span>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <button type="button" style={{ ...btn(false), opacity: page === 0 ? 0.4 : 1 }} disabled={page === 0} onClick={() => onPage(page - 1)} aria-label="Previous page">‹</button>
+        {nums.map((n, i) => (
+          <span key={n} style={{ display: "contents" }}>
+            {i > 0 && n - nums[i - 1] > 1 && <span style={{ color: C.muted }}>…</span>}
+            <button type="button" style={btn(n === page)} onClick={() => onPage(n)} aria-current={n === page ? "page" : undefined}>{n + 1}</button>
+          </span>
+        ))}
+        <button type="button" style={{ ...btn(false), opacity: page >= pages - 1 ? 0.4 : 1 }} disabled={page >= pages - 1} onClick={() => onPage(page + 1)} aria-label="Next page">›</button>
+      </div>
+    </div>
+  );
+}
+
+/** Collapsible row: header always visible, body toggles. */
+export function Accordion({ open, onToggle, header, right, children, tone }: { open: boolean; onToggle: () => void; header: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; tone?: "muted" | "bad" }) {
+  return (
+    <div style={{ border: `1px solid ${open ? C.border : C.sand}`, borderRadius: 10, background: tone === "bad" ? C.claySoft : tone === "muted" ? C.bg : "#fff", overflow: "hidden", boxShadow: open ? "0 4px 12px -6px rgba(16,24,40,.12)" : "none", transition: "box-shadow .15s" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+        <button type="button" onClick={onToggle} aria-expanded={open} style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, textAlign: "left" }}>
+          <span style={{ width: 24, height: 24, borderRadius: 6, background: C.bg, border: `1px solid ${C.sand}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: C.ink, fontSize: 12 }}>›</span>
+          <div style={{ minWidth: 0, flex: 1 }}>{header}</div>
+        </button>
+        {right}
+      </div>
+      {open && <div style={{ padding: "4px 14px 16px", borderTop: `1px solid ${C.sand}` }}>{children}</div>}
+    </div>
+  );
+}

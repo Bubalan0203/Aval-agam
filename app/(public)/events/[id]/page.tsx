@@ -2,7 +2,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronRight, Clock, Mail, MapPin, MessageCircle, ShieldCheck, Share2, Ticket, Users, Video } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Mail, MapPin, MessageCircle, ShieldCheck, Share2, Sparkles, Ticket, Users, Video } from "lucide-react";
 import { getEvent, getPublishedEvents } from "@/lib/firestore";
 import type { Event } from "@/lib/firestore";
 import type { EventSession } from "@/lib/event-sessions";
@@ -23,15 +23,11 @@ export default function EventDetailsPage() {
 function Skeleton() {
   return (
     <div className={s.page}>
-      <div className={s.wrap} style={{ paddingTop: 70 }}>
-        <div className={s.grid}>
-          <div className={s.skeleton} style={{ aspectRatio: "4/5" }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className={s.skeleton} style={{ height: 44, width: "70%" }} />
-            <div className={s.skeleton} style={{ height: 18, width: "40%" }} />
-            <div className={s.skeleton} style={{ height: 220, marginTop: 20 }} />
-          </div>
-        </div>
+      <div className={s.shell} style={{ paddingTop: 40, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className={s.skeleton} style={{ height: 18, width: "30%" }} />
+        <div className={s.skeleton} style={{ height: 52, width: "75%" }} />
+        <div className={s.skeleton} style={{ height: 80, marginTop: 12 }} />
+        <div className={s.layout}><div className={s.skeleton} style={{ height: 360 }} /><div className={s.skeleton} style={{ height: 360 }} /></div>
       </div>
     </div>
   );
@@ -49,6 +45,7 @@ function EventDetails() {
   const [chosen, setChosen] = useState<string | undefined>();
   const [picked, setPicked] = useState("");
   const [copied, setCopied] = useState(false);
+  const [allDates, setAllDates] = useState(false);
 
   const reloadEvent = useCallback(() => { getEvent(id).then(e => { if (e) setEvent(e); }).catch(() => {}); }, [id]);
 
@@ -68,9 +65,9 @@ function EventDetails() {
   if (state !== "ok" || !event) {
     return (
       <div className={s.page}>
-        <div className={s.wrap} style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, textAlign: "center" }}>
-          <p className={s.title} style={{ fontSize: 30 }}>{state === "error" ? "We couldn't load this event" : "This event isn't available"}</p>
-          <p style={{ color: "var(--t3)", fontSize: 15, maxWidth: 420 }}>{state === "error" ? "Please check your connection and try again." : "It may have ended or been removed. See what's coming up."}</p>
+        <div className={s.shell} style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, textAlign: "center" }}>
+          <p className={s.titleXL} style={{ fontSize: 30 }}>{state === "error" ? "We couldn't load this event" : "This event isn't available"}</p>
+          <p style={{ color: "var(--t3)", fontSize: 15, maxWidth: 420 }}>{state === "error" ? "Check your connection and try again." : "It may have ended or been removed. See what's coming up."}</p>
           <button type="button" className={s.cta} onClick={() => state === "error" ? location.reload() : router.push("/#all-events")}>{state === "error" ? "Try again" : "Browse events"}</button>
         </div>
       </div>
@@ -91,7 +88,8 @@ function EventDetails() {
   const availTone = isDraft || !canBook ? s.chipMuted : left <= 10 ? s.chipWarn : s.chipGood;
   const online = /online|zoom|meet/i.test(event.location);
   const ask = `${WHATSAPP}?text=${encodeURIComponent(`Hi! I have a question about "${event.title}".`)}`;
-  const hasMedia = event.gallery.length > 0 || (event.youtubeUrls ?? []).some(Boolean);
+  const photos = event.gallery.filter(Boolean);
+  const hasMedia = photos.length > 0 || (event.youtubeUrls ?? []).some(Boolean);
 
   function book() { if (canBook) { setChosen(selected?.id); setModalOpen(true); } }
 
@@ -103,85 +101,85 @@ function EventDetails() {
     } catch { /* dismissed */ }
   }
 
-  const month = shown ? new Date(`${shown.date}T00:00:00+05:30`).toLocaleDateString("en-IN", { month: "short", timeZone: "Asia/Kolkata" }).toUpperCase() : "";
-
   return (
     <div className={s.page}>
-      {isDraft && <div className={s.draft}>Preview — this event isn&rsquo;t published yet. Customers can&rsquo;t see it.</div>}
+      {isDraft && <div className={s.draft}>Preview: this event isn&rsquo;t published yet, so customers can&rsquo;t see it.</div>}
 
-      <section className={s.hero}>
-        {event.image ? <img src={event.image} alt={event.title} /> : null}
-        <div className={s.heroShade} />
-        <div className={cx(s.wrap, s.heroInner)}>
-          <div className={s.heroTop}>
-            <nav className={s.heroCrumbs} aria-label="Breadcrumb">
-              <button type="button" onClick={() => router.push("/#all-events")}>Events</button>
-              {event.category && <><ChevronRight size={14} /><span>{event.category}</span></>}
-              <ChevronRight size={14} /><span>{event.title}</span>
-            </nav>
-            <button type="button" className={s.glassBtn} onClick={share}><Share2 size={15} /> {copied ? "Link copied" : "Share"}</button>
+      <div className={s.shell}>
+        {/* Breadcrumb + status */}
+        <div className={s.headRow}>
+          <nav className={s.crumbs2} aria-label="Breadcrumb">
+            <button type="button" onClick={() => router.push("/#all-events")}>Events</button>
+            {event.category && <><ChevronRight size={13} /><span>{event.category}</span></>}
+            <ChevronRight size={13} /><span>{event.title}</span>
+          </nav>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className={cx(s.chip, availTone)}><span className={s.dot} />{availability}</span>
+            {upcoming.length > 1 && <span className={cx(s.chip, s.chipGold)}>{upcoming.length} dates</span>}
+            <button type="button" className={s.iconBtn} onClick={share}><Share2 size={14} /> {copied ? "Link copied" : "Share"}</button>
           </div>
-          <div>
-            <div className={s.chips}>
-              <span className={cx(s.chip, availTone)}><span className={s.dot} />{availability}</span>
-              {event.category && <span className={cx(s.chip, s.chipGlass)}>{event.category}</span>}
-              {online && <span className={cx(s.chip, s.chipGlass)}><Video size={13} /> Online</span>}
-              {upcoming.length > 1 && <span className={cx(s.chip, s.chipGlass)}>{upcoming.length} dates</span>}
+        </div>
+
+        {/* Banner */}
+        {event.image && (
+          <div className={s.banner}>
+            <img src={event.image} alt={event.title} />
+            {event.category && <div className={s.bannerTag}><span className={cx(s.chip, s.chipGlass)}>{event.category}</span></div>}
+          </div>
+        )}
+
+        {/* Title */}
+        <h1 className={s.titleXL}>{event.title}</h1>
+
+        {/* Facts strip */}
+        <div className={s.strip}>
+          <div className={s.stripCell}>
+            <span className={s.stripIcon}><CalendarDays size={20} /></span>
+            <div style={{ minWidth: 0 }}>
+              <p className={s.stripK}>Date &amp; time</p>
+              <p className={s.stripV}>{shown ? formatDateLong(shown.date) : "Dates coming soon"}</p>
+              <p className={s.stripS}>{shown ? `${formatTime12(shown.startTime)} – ${formatTime12(shown.endTime)} IST${upcoming.length > 1 ? ` · +${upcoming.length - 1} more` : ""}` : "Message us to hear first"}</p>
             </div>
-            <h1 className={s.heroTitle}>{event.title}</h1>
-            <div className={s.heroMeta}>
-              {shown && <span><Clock size={16} /> {formatDateLong(shown.date)} · {formatTime12(shown.startTime)}</span>}
-              <span>{online ? <Video size={16} /> : <MapPin size={16} />} {event.location || "Venue to be announced"}</span>
-              <span><Ticket size={16} /> {priceLabel}</span>
+          </div>
+          <div className={s.stripCell}>
+            <span className={s.stripIcon}>{online ? <Video size={20} /> : <MapPin size={20} />}</span>
+            <div style={{ minWidth: 0 }}>
+              <p className={s.stripK}>Location</p>
+              <p className={s.stripV}>{event.location || "To be announced"}</p>
+              <p className={s.stripS}>{event.locationUrl ? <a href={event.locationUrl} target="_blank" rel="noopener noreferrer">Open in Google Maps ↗</a> : online ? "Joining link emailed after booking" : "Coimbatore"}</p>
             </div>
-            <div className={s.heroActions}>
-              {canBook
-                ? <button type="button" className={s.heroCta} onClick={book}><Ticket size={17} /> Book your seat</button>
-                : <a className={s.heroCta} href={ask} target="_blank" rel="noopener noreferrer"><MessageCircle size={17} /> Ask on WhatsApp</a>}
-              <a className={s.glassBtn} style={{ height: 50, padding: "0 22px" }} href="#about">Learn more</a>
+          </div>
+          <div className={s.stripCell}>
+            <span className={s.stripIcon}><Sparkles size={20} /></span>
+            <div style={{ minWidth: 0 }}>
+              <p className={s.stripK}>Experience</p>
+              <p className={s.stripV}>{event.category || "Workshop"}{online ? " · Online" : ""}</p>
+              <p className={s.stripS}>{shown ? duration(shown.startTime, shown.endTime) : ""}{shown ? " · " : ""}Small, held circle</p>
             </div>
           </div>
         </div>
-      </section>
 
-      <div className={s.wrap}>
-        <div className={s.body}>
-          <main className={s.right}>
-              <div className={s.facts}>
-                <div className={s.fact}>
-                  {shown ? <div className={s.dateTile}><div className={s.dateTileMonth}>{month}</div><div className={s.dateTileDay}>{Number(shown.date.slice(8))}</div></div> : <div className={s.iconTile}><Clock size={20} /></div>}
-                  <div>
-                    <p className={s.factMain}>{shown ? formatDateLong(shown.date) : "Dates to be announced"}</p>
-                    <p className={s.factSub}>{shown ? `${formatTime12(shown.startTime)} – ${formatTime12(shown.endTime)} IST · ${duration(shown.startTime, shown.endTime)}` : "Follow us for the next date"}</p>
-                  </div>
-                </div>
-                <div className={s.fact}>
-                  <div className={s.iconTile}>{online ? <Video size={20} /> : <MapPin size={20} />}</div>
-                  <div>
-                    <p className={s.factMain}>{event.location || "Venue to be announced"}</p>
-                    <p className={s.factSub}>{event.locationUrl ? <a href={event.locationUrl} target="_blank" rel="noopener noreferrer">Open in Google Maps ↗</a> : online ? "Joining link is emailed after booking" : "Coimbatore"}</p>
-                  </div>
-                </div>
-              </div>
-            {/* About */}
-            <section id="about" className={s.card}>
-              <div className={s.cardHead}><span className={s.cardTitle}>About this event</span></div>
-              <div className={s.cardPad}><Collapsible><div className={s.prose}><EventDescription value={event.description} format={event.descriptionFormat} /></div></Collapsible></div>
+        <div className={s.layout}>
+          {/* Main column */}
+          <div className={s.mainCol}>
+            <section id="about" className={s.panel}>
+              <p className={s.eyebrow}>About this event</p>
+              <h2 className={s.secTitle}>What to expect</h2>
+              <Collapsible><div className={s.prose}><EventDescription value={event.description} format={event.descriptionFormat} /></div></Collapsible>
             </section>
 
             {hasMedia && (
-              <section id="media" className={cx(s.card, s.mediaCard)}>
-                <div className={s.cardPad}><EventMediaGallery key={event.id} urls={event.youtubeUrls} photos={event.gallery} /></div>
+              <section id="media" className={cx(s.panel, s.mediaCard)}>
+                <EventMediaGallery key={event.id} urls={event.youtubeUrls} photos={photos} />
               </section>
             )}
 
-            {/* Good to know */}
-            <section className={s.card}>
-              <div className={s.cardHead}><span className={s.cardTitle}>Good to know</span></div>
+            <section className={s.panel} style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "22px 24px 4px" }}><p className={s.eyebrow}>Clear guidelines</p><h2 className={s.secTitle}>Good to know</h2></div>
               <div className={s.infoGrid}>
                 {[
                   { Icon: ShieldCheck, t: "Secure booking", d: "Pay with UPI, cards or netbanking via Razorpay." },
-                  { Icon: Mail, t: "Instant confirmation", d: "Booking details are emailed as soon as you book." },
+                  { Icon: Mail, t: "Instant confirmation", d: "Your booking details are emailed as soon as you book." },
                   { Icon: Users, t: "Small, held space", d: "Limited seats so everyone is seen and supported." },
                   { Icon: MessageCircle, t: "Have a question?", d: <a href={ask} target="_blank" rel="noopener noreferrer">Chat with us on WhatsApp →</a> },
                 ].map(x => (
@@ -192,61 +190,59 @@ function EventDetails() {
                 ))}
               </div>
             </section>
-          </main>
+          </div>
 
-          <aside className={s.side}>
-            {/* Registration */}
+          {/* Sidebar */}
+          <aside className={s.sideCol}>
             <section id="register" className={cx(s.card, s.reg)}>
-              <div className={s.cardHead}><span className={s.cardTitle}>Registration</span>{canBook && <span className={cx(s.chip, availTone)}>{availability}</span>}</div>
+              <div className={s.cardHead}><span className={s.cardTitle}>Registration</span><span className={cx(s.chip, availTone)}>{availability}</span></div>
               <div className={s.regTop}>
                 <div>
                   <p className={s.price}>{priceLabel}</p>
                   <p className={s.priceSub}>{maxP > 0 ? "per person · taxes included" : "No payment needed"}</p>
                 </div>
-                {event.ticketTypes.length > 1 && (
-                  <div className={s.ticketPills}>{event.ticketTypes.map(t => <span key={t.id} className={s.ticketPill}>{t.name} <b>{rupees(t.price)}</b></span>)}</div>
-                )}
               </div>
-
+              {event.ticketTypes.length > 1 && (
+                <div className={s.ticketPills} style={{ padding: "0 20px 16px" }}>{event.ticketTypes.map(t => <span key={t.id} className={s.ticketPill}>{t.name} <b>{t.price ? rupees(t.price) : "Free"}</b></span>)}</div>
+              )}
               {upcoming.length > 0 ? (
                 <>
                   <p className={s.regLabel}>{upcoming.length > 1 ? "Choose a date" : "Date"}</p>
-                  <div className={s.slots} role="radiogroup" aria-label="Dates">
-                    {upcoming.map(x => {
+                  <div className={s.dateList} role="radiogroup" aria-label="Dates" style={allDates ? { maxHeight: 380, overflowY: "auto", paddingRight: 4 } : undefined}>
+                    {(allDates ? upcoming : upcoming.slice(0, 4)).map(x => {
                       const l = sessionRemaining(event, x);
-                      const on = x.id === selected?.id;
                       return (
-                        <button key={x.id} type="button" role="radio" aria-checked={on} disabled={!canBook || l === 0} className={s.slot} onClick={() => setPicked(x.id)}>
-                          <p className={s.slotDay}>{formatDateShort(x.date)}</p>
-                          <p className={s.slotTime}>{formatTime12(x.startTime)} – {formatTime12(x.endTime)}</p>
-                          <p className={s.slotLeft} style={{ color: l === 0 ? "var(--t4)" : l <= 10 ? "var(--clay)" : "#2F7A55" }}>{l === 0 ? "Sold out" : l <= 10 ? `${l} left` : "Available"}</p>
+                        <button key={x.id} type="button" role="radio" aria-checked={x.id === selected?.id} disabled={!canBook || l === 0} className={s.dateRow} onClick={() => setPicked(x.id)}>
+                          <span><span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{formatDateShort(x.date)}</span><span style={{ fontSize: 12, color: "var(--t3)" }}>{formatTime12(x.startTime)} – {formatTime12(x.endTime)}</span></span>
+                          <span className={s.tag} style={{ background: l === 0 ? "#EEE2D5" : l <= 10 ? "var(--clay-soft)" : "#E6F2EC", color: l === 0 ? "var(--t3)" : l <= 10 ? "var(--clay)" : "#2F7A55" }}>{l === 0 ? "Sold out" : l <= 10 ? `${l} left` : "Available"}</span>
                         </button>
                       );
                     })}
                   </div>
+                  {upcoming.length > 4 && (
+                    <button type="button" onClick={() => setAllDates(v => !v)} style={{ margin: "0 20px 14px", padding: "9px 0", borderRadius: 10, border: "1px dashed var(--border)", background: "transparent", color: "var(--brand)", fontSize: 13, fontWeight: 600, width: "calc(100% - 40px)" }}>
+                      {allDates ? "Show fewer dates" : `+ ${upcoming.length - 4} more dates`}
+                    </button>
+                  )}
                 </>
               ) : <p className={s.regLabel} style={{ color: "var(--t3)", fontWeight: 400 }}>New dates are coming soon. Message us to hear first.</p>}
-
-              <div className={s.regFoot}>
-                <span className={s.secure}><ShieldCheck size={15} /> Secure payment · Instant email confirmation</span>
+              <div className={s.regFoot} style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
                 {canBook
-                  ? <button type="button" className={s.cta} onClick={book}><Ticket size={17} /> {selected ? `Book for ${formatDateShort(selected.date)}` : "Book now"}</button>
-                  : <a className={s.ctaGhost} href={ask} target="_blank" rel="noopener noreferrer"><MessageCircle size={17} /> {isDraft ? "Booking disabled in preview" : "Ask about the next date"}</a>}
+                  ? <button type="button" className={s.cta} style={{ width: "100%" }} onClick={book}><Ticket size={17} /> {selected ? `Book for ${formatDateShort(selected.date)}` : "Book now"}</button>
+                  : <a className={s.ctaGhost} style={{ width: "100%" }} href={ask} target="_blank" rel="noopener noreferrer"><MessageCircle size={17} /> {isDraft ? "Booking disabled in preview" : "Ask about the next date"}</a>}
+                <span className={s.secure} style={{ justifyContent: "center" }}><ShieldCheck size={14} /> Secure payment · instant email confirmation</span>
               </div>
             </section>
-            <div className={s.card}>
-              <div className={s.cardHead}><span className={s.cardTitle}>Hosted by</span></div>
+
+            <section className={s.card}>
               <div className={s.cardPad}>
                 <div className={s.host}>
                   <span className={s.hostLogo}><Image src="/logo.png" alt="" width={36} height={36} style={{ objectFit: "contain" }} /></span>
-                  <div><p className={s.hostName}>Aval Agam</p><p className={s.hostSub}>Her Inner World · Coimbatore</p></div>
+                  <div><p className={s.hostName}>Hosted by Aval Agam</p><p className={s.hostSub}>Her Inner World · Coimbatore</p></div>
                 </div>
+                <a href={ask} target="_blank" rel="noopener noreferrer" className={s.ctaGhost} style={{ width: "100%", height: 42, marginTop: 14 }}><MessageCircle size={16} /> Message on WhatsApp</a>
               </div>
-              <div className={s.sideList} style={{ borderTop: "1px solid var(--border)" }}>
-                <div className={s.sideRow}><MessageCircle size={16} /><a href={ask} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a></div>
-                <div className={s.sideRow}><Users size={16} />Small group · limited seats</div>
-              </div>
-            </div>
+            </section>
           </aside>
         </div>
 

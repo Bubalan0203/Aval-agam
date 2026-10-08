@@ -80,6 +80,8 @@ export type Booking = {
   cancellationReason?: string;
   history?:    BookingHistoryEntry[];
   confirmationEmailSentAt?: string | null;
+  cancellationEmailSentAt?: string | null;
+  cancellationEmailError?: string;
   bookedAt?:   Timestamp;
 };
 

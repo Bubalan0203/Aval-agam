@@ -9,11 +9,14 @@ import {
   type Booking, type Event, type EventStatus,
 } from "@/lib/firestore";
 import { sendCancellationEmails } from "@/lib/cancellation-email";
+import { EmailQueue, type EmailJob } from "@/components/admin/EmailQueue";
 import { sessionAvailable, sessionStart, type EventSession } from "@/lib/event-sessions";
 import { formatDateLong, formatTime12, rupees, sessionCapacity, sessionSold } from "@/lib/booking-logic";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { exportBookingsCsv } from "@/components/admin/BookingTools";
-import { Badge, Button, C, Card, ConfirmDialog, Empty, EventStatusBadge, Field, PageHeader, PageSkeleton, StatCard, inputStyle, useToast } from "@/components/admin/ui";
+import { Badge, Button, C, Card, ConfirmDialog, Empty, EventStatusBadge, Field, PageHeader, PageSkeleton, Pager, StatCard, inputStyle, useToast } from "@/components/admin/ui";
+
+const DATES_PER_PAGE = 10;
 
 export default function AdminEventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +32,20 @@ export default function AdminEventDetailPage() {
   const [reason, setReason] = useState("");
   const [sessionFilter, setSessionFilter] = useState("");
   const [showPast, setShowPast] = useState(false);
+  const [datePage, setDatePage] = useState(0);
+  const [job, setJob] = useState<EmailJob | null>(null);
+  const closeJob = useCallback(() => setJob(null), []);
+
+  async function sendQueue(eventId: string, title: string) {
+    setJob({ title, items: [], done: false });
+    try {
+      await sendCancellationEmails(eventId, items => setJob(j => j && { ...j, items }));
+      setJob(j => j && { ...j, done: true });
+    } catch (e) {
+      setJob(j => j && { ...j, done: true, error: (e as Error).message });
+    }
+    load();
+  }
 
   const load = useCallback(() => {
     Promise.all([getEvent(id), getEventBookings(id), getEvents()]).then(([e, b, all]) => { setEvent(e); setBookings(b); setEvents(all); })
@@ -53,6 +70,8 @@ export default function AdminEventDetailPage() {
   const upcoming = sessions.filter(s => sessionAvailable(s));
   const past = sessions.filter(s => !sessionAvailable(s));
   const shownSessions = showPast ? sessions : upcoming;
+  const cancelledIds = new Set(sessions.filter(s => s.status === "cancelled").map(s => s.id));
+  const unsentCancellations = bookings.filter(b => cancelledIds.has(b.sessionId ?? "") && !b.cancellationEmailSentAt && !!b.cancellationEmailError);
   const affected = cancelling ? confirmed.filter(b => b.sessionId === cancelling.id) : [];
   const setStatus = (s: EventStatus, msg: string) => run(() => setEventStatus(event.id, s), msg);
 
@@ -88,7 +107,7 @@ export default function AdminEventDetailPage() {
       {event.status === "published" && upcoming.length === 0 && (
         <div style={{ padding: 14, borderRadius: 10, border: "1px solid #FEDF89", background: C.goldSoft, color: C.gold, fontSize: 14, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           This event is live but has no upcoming dates, so nobody can book it.
-          <Link href={`/admin/events/${event.id}/edit#dates`}><Button variant="secondary">Add dates</Button></Link>
+          <Link href={`/admin/events/${event.id}/edit?section=dates`}><Button variant="secondary">Add dates</Button></Link>
         </div>
       )}
 
@@ -106,10 +125,11 @@ export default function AdminEventDetailPage() {
 
       <Card title="Dates" subtitle={`${event.ticketTypes.map(t => `${t.name} ${rupees(t.price)} · ${t.available} seats`).join("  ·  ")} per date`} padded={false}
         action={<div style={{ display: "flex", gap: 8 }}>
-          {past.length > 0 && <Button variant="secondary" onClick={() => setShowPast(v => !v)}>{showPast ? "Hide past" : `Show past (${past.length})`}</Button>}
-          <Link href={`/admin/events/${event.id}/edit#dates`}><Button variant="secondary">Add / edit dates</Button></Link>
+          {past.length > 0 && <Button variant="secondary" onClick={() => { setShowPast(v => !v); setDatePage(0); }}>{showPast ? "Hide past & cancelled" : `Show past & cancelled (${past.length})`}</Button>}
+          <Link href={`/admin/events/${event.id}/edit?section=dates`}><Button variant="secondary">Add / edit dates</Button></Link>
         </div>}>
-        {shownSessions.length === 0 ? <Empty icon={<CalendarX size={22} />}>No upcoming dates.</Empty> : shownSessions.map(s => {
+        <div className="admin-table-wrap" style={{ height: "min(560px, calc(100vh - 320px))", minHeight: 280 }}>
+        {shownSessions.length === 0 ? <div className="admin-table-empty" style={{ height: "100%" }}><Empty icon={<CalendarX size={22} />}>No upcoming dates.</Empty></div> : shownSessions.slice(datePage * DATES_PER_PAGE, (datePage + 1) * DATES_PER_PAGE).map(s => {
           const sold = sessionSold(s);
           const att = confirmed.filter(b => b.sessionId === s.id);
           const all = bookings.filter(b => b.sessionId === s.id);
@@ -137,9 +157,11 @@ export default function AdminEventDetailPage() {
             </div>
           );
         })}
-        {bookings.some(b => b.status === "refund_required" || b.status === "cancelled") && event.sessions.some(s => s.status === "cancelled") && (
+        </div>
+        {<Pager page={datePage} total={shownSessions.length} perPage={DATES_PER_PAGE} onPage={setDatePage} label="dates" />}
+        {unsentCancellations.length > 0 && (
           <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.sand}`, display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(async () => { const r = await sendCancellationEmails(event.id); return `${r.sent} cancellation emails sent${r.failed ? `, ${r.failed} failed` : ""}.`; }, "Done.")}>Resend unsent cancellation emails</Button>
+            <Button variant="ghost" size="sm" disabled={busy || (!!job && !job.done)} onClick={() => sendQueue(event.id, "Resending cancellation emails")}>Resend {unsentCancellations.length} failed cancellation email{unsentCancellations.length === 1 ? "" : "s"}</Button>
           </div>
         )}
       </Card>
@@ -157,13 +179,10 @@ export default function AdminEventDetailPage() {
         onCancel={() => setCancelling(null)}
         onConfirm={async () => {
           const c = cancelling!;
-          await run(async () => {
-            await cancelEventSession(event.id, c.id, reason);
-            if (!affected.length) return "Date cancelled.";
-            const r = await sendCancellationEmails(event.id);
-            return `Date cancelled. ${r.sent} email${r.sent === 1 ? "" : "s"} sent${r.failed ? `, ${r.failed} failed — use "Resend" below` : ""}.`;
-          }, "Date cancelled.");
+          const hasMail = affected.length > 0;
+          const ok = await run(() => cancelEventSession(event.id, c.id, reason), hasMail ? "Date cancelled. Emails are going out — see the panel at the bottom right." : "Date cancelled.");
           setCancelling(null);
+          if (ok && hasMail) sendQueue(event.id, `${formatDateLong(c.date)} cancelled`);
         }}>
         <Field label="Reason (shown to customers)" required><textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} style={inputStyle()} placeholder="e.g. The facilitator is unwell. We're sorry for the inconvenience." /></Field>
       </ConfirmDialog>
@@ -175,6 +194,7 @@ export default function AdminEventDetailPage() {
         {bookings.length > 0 && <Field label='Type DELETE to confirm'><input value={typed} onChange={e => setTyped(e.target.value)} style={inputStyle()} autoComplete="off" /></Field>}
       </ConfirmDialog>
       {toastNode}
+      <EmailQueue job={job} onClose={closeJob} />
     </div>
   );
 }

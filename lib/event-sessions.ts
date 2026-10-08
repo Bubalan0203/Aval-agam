@@ -47,8 +47,9 @@ export function validateSessions(next: EventSession[], previous: EventSession[] 
       if (s.endTime <= s.startTime) throw new Error("End time must be after start time on the same date.");
       if (new Date(sessionStart(s) + 330 * 60000).toISOString().slice(0, 10) !== s.date) throw new Error("Invalid calendar date.");
     }
-    const key = `${s.date}/${s.startTime}/${s.endTime}`;
-    if (slots.has(key)) throw new Error("Duplicate date and time.");
-    slots.add(key);
+    // Cancelled dates are skipped above, so a cancelled slot can be re-added; two active dates may not overlap.
+    const clash = [...slots].some(k => { const [d, st, en] = k.split("/"); return d === s.date && s.startTime < en && st < s.endTime; });
+    if (clash) throw new Error(`Two active dates overlap on ${s.date}. Change or remove one.`);
+    slots.add(`${s.date}/${s.startTime}/${s.endTime}`);
   }
 }

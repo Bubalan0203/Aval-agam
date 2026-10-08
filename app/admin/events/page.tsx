@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, ImageOff, Plus, Search, Trash2 } from "lucide-react";
 import { deleteEvent, getEvents, type Event } from "@/lib/firestore";
 import { formatDateShort, formatTime12, rupees, sessionCapacity, sessionSold, upcomingSessions } from "@/lib/booking-logic";
-import { Badge, Button, C, Card, ConfirmDialog, Empty, EventStatusBadge, Field, PageHeader, PageSkeleton, inputStyle, useToast } from "@/components/admin/ui";
+import { Badge, Button, C, Card, ConfirmDialog, Empty, EventStatusBadge, Field, PageHeader, PageSkeleton, Pager, inputStyle, useToast } from "@/components/admin/ui";
 
 type Tab = "all" | "upcoming" | "draft";
 const TABS: [Tab, string][] = [["all", "All"], ["upcoming", "Upcoming"], ["draft", "Drafts"]];
@@ -29,6 +29,7 @@ function EventsView() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<Tab>(() => (TABS.some(([t]) => t === params.get("status")) ? params.get("status") as Tab : "all"));
 
+  const [page, setPage] = useState(0);
   const [target, setTarget] = useState<Event | null>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,7 @@ function EventsView() {
 
       <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.sand}`, overflowX: "auto" }}>
         {TABS.map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 12px", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", color: tab === t ? C.green : C.muted, borderBottom: `2px solid ${tab === t ? C.green : "transparent"}`, marginBottom: -1 }}>
+          <button key={t} onClick={() => { setTab(t); setPage(0); }} style={{ padding: "10px 12px", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", color: tab === t ? C.green : C.muted, borderBottom: `2px solid ${tab === t ? C.green : "transparent"}`, marginBottom: -1 }}>
             {label} <span style={{ marginLeft: 4, fontSize: 12, padding: "1px 7px", borderRadius: 999, background: tab === t ? C.greenSoft : "#F2F4F7" }}>{counts[t]}</span>
           </button>
         ))}
@@ -79,16 +80,16 @@ function EventsView() {
         <div style={{ padding: 16, borderBottom: `1px solid ${C.sand}` }}>
           <div style={{ position: "relative", maxWidth: 380 }}>
             <Search size={16} color={C.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by title, venue or category" style={{ ...inputStyle(), paddingLeft: 38 }} />
+            <input value={q} onChange={e => { setQ(e.target.value); setPage(0); }} placeholder="Search by title, venue or category" style={{ ...inputStyle(), paddingLeft: 38 }} />
           </div>
         </div>
 
         {rows.length === 0 ? (
-          <Empty icon={<CalendarDays size={22} />} action={tab === "all" && !q ? <Link href="/admin/events/create"><Button>Create your first event</Button></Link> : undefined}>
+          <div className="admin-table-wrap admin-table-empty"><Empty icon={<CalendarDays size={22} />} action={tab === "all" && !q ? <Link href="/admin/events/create"><Button>Create your first event</Button></Link> : undefined}>
             {q ? `No events match “${q}”.` : "No events in this view."}
-          </Empty>
+          </Empty></div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="admin-table-wrap">
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
               <thead>
                 <tr style={{ background: C.bg, textAlign: "left", fontSize: 12, color: C.ink }}>
@@ -101,7 +102,7 @@ function EventsView() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(e => {
+                {rows.slice(page * 10, page * 10 + 10).map(e => {
                   const up = upcomingSessions(e); const next = up[0]; const cap = sessionCapacity(e);
                   const prices = e.ticketTypes.map(t => t.price);
                   const sold = next ? sessionSold(next) : 0;
@@ -140,6 +141,7 @@ function EventsView() {
             </table>
           </div>
         )}
+        <Pager page={Math.min(page, Math.max(0, Math.ceil(rows.length / 10) - 1))} total={rows.length} perPage={10} onPage={setPage} label="events" />
       </Card>
 
       {target && (
