@@ -27,8 +27,11 @@ import { EVENT_CATEGORIES } from "@/lib/event-options";
 export default function HomePage() {
   const [category, setCategory] = useState("All");
   const [events, setEvents] = useState<Event[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ok" | "error">("loading");
 
-  useEffect(() => { getPublishedEvents().then(setEvents).catch(() => {}); }, []);
+  useEffect(() => {
+    getPublishedEvents().then(e => { setEvents(e); setLoadState("ok"); }).catch(() => setLoadState("error"));
+  }, []);
 
   // Only upcoming events, soonest first
 
@@ -74,7 +77,9 @@ export default function HomePage() {
               {filtered.map((event) => <EventCard key={event.id} event={event} />)}
             </div>
           ) : (
-            <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", opacity: 0.45, padding: "8px 0 16px" }}>No events found.</p>
+            <p style={{ fontFamily: "Poppins, sans-serif", color: "#2F3328", fontSize: "14px", opacity: 0.45, padding: "8px 0 16px" }}>
+              {loadState === "loading" ? "Loading events…" : loadState === "error" ? "Couldn't load events. Please refresh the page." : "No upcoming events right now."}
+            </p>
           )}
         </div>
       </section>
