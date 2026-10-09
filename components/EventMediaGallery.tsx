@@ -5,13 +5,26 @@ import { normalizeYouTubeUrls } from "@/lib/event-content";
 import { EventVideoPlayer } from "./EventVideos";
 
 const G = "#0F332B";
-const PREVIEW = 5; // tiles shown before "View all"
+const PREVIEW = 8; // tiles shown before "View all"
+const PER_ROW = 4;
+
+/** Splits photos into evenly sized rows (4 → 4, 5 → 3+2, 6 → 3+3, 7 → 4+3) so every row fills the full width. */
+function balancedRows<T>(items: T[]) {
+  const rows = Math.ceil(items.length / PER_ROW), out: { row: T[]; start: number }[] = [];
+  for (let r = 0, start = 0; r < rows; r++) {
+    const size = Math.ceil((items.length - start) / (rows - r));
+    out.push({ row: items.slice(start, start + size), start });
+    start += size;
+  }
+  return out;
+}
 
 /** Videos + full photo gallery. Every photo is reachable (grid preview, "view all", lightbox with arrows/swipe/keys). */
 export function EventMediaGallery({ urls, photos }: { urls?: unknown; photos: string[] }) {
   const videos = normalizeYouTubeUrls(urls).filter((url): url is string => Boolean(url));
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [ratios, setRatios] = useState<Record<string, number>>({});
   if (!videos.length && !photos.length) return null;
 
   const tiles = showAll ? photos : photos.slice(0, PREVIEW);
@@ -25,17 +38,24 @@ export function EventMediaGallery({ urls, photos }: { urls?: unknown; photos: st
             <h2 style={{ fontFamily: "Playfair Display, serif", fontSize: 24, fontWeight: 700, color: G }}>Gallery</h2>
             <button type="button" onClick={() => setLightbox(0)} style={{ fontSize: 13, fontWeight: 600, color: "#a54c2c", display: "inline-flex", alignItems: "center", gap: 6 }}><Images size={15} /> {photos.length} photo{photos.length === 1 ? "" : "s"}</button>
           </div>
-          <div className={`ev-gallery ev-gallery--${Math.min(tiles.length, PREVIEW)}${showAll ? " ev-gallery--all" : ""}`}>
-            {tiles.map((url, i) => {
-              const isLastPreview = !showAll && i === PREVIEW - 1 && hidden > 0;
-              return (
-                <button key={`${url}-${i}`} type="button" aria-label={isLastPreview ? `View all ${photos.length} photos` : `Open photo ${i + 1}`}
-                  onClick={() => isLastPreview ? setShowAll(true) : setLightbox(i)}>
-                  <img src={url} alt="" loading="lazy" />
-                  {isLastPreview && <span className="ev-gallery-more">+{hidden + 1}<small>View all</small></span>}
-                </button>
-              );
-            })}
+          <div className="ev-justified">
+            {balancedRows(tiles).map(({ row, start }, r) => (
+              <div key={r} className="ev-justified-row">
+                {row.map((url, j) => {
+                  const i = start + j;
+                  const ratio = ratios[url] ?? 0.75;
+                  const isLastPreview = !showAll && i === PREVIEW - 1 && hidden > 0;
+                  return (
+                    <button key={`${url}-${i}`} type="button" style={{ flex: `${ratio} 1 0`, aspectRatio: String(ratio) }}
+                      aria-label={isLastPreview ? `View all ${photos.length} photos` : `Open photo ${i + 1}`}
+                      onClick={() => isLastPreview ? setShowAll(true) : setLightbox(i)}>
+                      <img src={url} alt="" loading="lazy" onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h && ratios[url] !== w / h) setRatios(m => ({ ...m, [url]: w / h })); }} />
+                      {isLastPreview && <span className="ev-gallery-more">+{hidden + 1}<small>View all</small></span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
           {showAll && photos.length > PREVIEW && <button type="button" onClick={() => setShowAll(false)} style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: "#a54c2c" }}>Show fewer</button>}
         </section>
@@ -48,7 +68,7 @@ export function EventMediaGallery({ urls, photos }: { urls?: unknown; photos: st
             {videos.length > 1 && <span style={{ fontSize: 13, color: "#6B6F64" }}>{videos.length} videos</span>}
           </div>
           <div className="event-video-grid">
-            {videos.map((url, i) => <div key={`${url}-${i}`} className="event-media-frame"><EventVideoPlayer url={url} title={`Event video ${i + 1}`} /></div>)}
+            {videos.map((url, i) => <EventVideoPlayer key={`${url}-${i}`} url={url} title={`Event video ${i + 1}`} />)}
           </div>
         </section>
       )}
