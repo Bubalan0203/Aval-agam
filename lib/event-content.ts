@@ -35,8 +35,8 @@ export function normalizeYouTubeUrls(value: unknown): YouTubeUrls {
 
 export function sanitizeDescription(html: string): string {
   return sanitizeHtml(html, {
-    allowedTags: ["p", "br", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "pre", "code", "hr", "span", "a"],
-    allowedAttributes: { a: ["href", "target", "rel"], span: ["style"], p: ["style"], h2: ["style"], h3: ["style"], h4: ["style"], ol: ["start"] },
+    allowedTags: ["p", "br", "h2", "h3", "h4", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "pre", "code", "hr", "span", "a", "mark", "label", "input", "div"],
+    allowedAttributes: { a: ["href", "target", "rel"], span: ["style"], mark: ["style"], p: ["style"], h2: ["style"], h3: ["style"], h4: ["style"], ol: ["start"], ul: ["data-type"], li: ["data-type", "data-checked"], input: ["type", "checked", "disabled"] },
     allowedSchemes: ["http", "https", "mailto"],
     allowProtocolRelative: false,
     allowedStyles: {
@@ -45,11 +45,13 @@ export function sanitizeDescription(html: string): string {
         "font-size": [/^(12|14|16|18|20|24|28|32|36|48)px$/],
         color: [/^#[a-fA-F0-9]{6}$/, /^rgb\(\s*\d{1,3},\s*\d{1,3},\s*\d{1,3}\s*\)$/],
         "background-color": [/^#[a-fA-F0-9]{6}$/, /^rgb\(\s*\d{1,3},\s*\d{1,3},\s*\d{1,3}\s*\)$/],
-        "font-family": [/^(Poppins|Arial|Georgia|monospace)(,\s*(sans-serif|serif))?$/],
+        "font-family": [/^["']?(Poppins|Playfair Display|Arial|Georgia|monospace)["']?(,\s*(sans-serif|serif))?$/],
+        "line-height": [/^(1|1\.15|1\.5|2)$/],
       },
     },
     transformTags: {
       a: (_tagName, attributes) => ({ tagName: "a", attribs: { ...attributes, target: "_blank", rel: "noopener noreferrer" } }),
+      input: (_tagName, attributes) => attributes.type === "checkbox" ? { tagName: "input", attribs: { type: "checkbox", ...(attributes.checked !== undefined ? { checked: "checked" } : {}), disabled: "disabled" } } : { tagName: "span", attribs: {} },
     },
   });
 }

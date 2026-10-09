@@ -6,9 +6,9 @@ import Image from "next/image";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { isAdmin } from "@/lib/firestore";
-import { confirmLeave } from "@/lib/unsaved";
+import { isUnsaved, leaveThen, registerLeavePrompt } from "@/lib/unsaved";
 import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, LayoutDashboard, LogOut, Menu, Plus, Ticket, X } from "lucide-react";
-import { Button, C } from "@/components/admin/ui";
+import { Button, C, ConfirmDialog } from "@/components/admin/ui";
 
 const NAV = [
   { href: "/admin/dashboard", label: "Dashboard", Icon: LayoutDashboard },
@@ -37,9 +37,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return unsub;
   }, [pathname, router]);
 
+  const [leave, setLeave] = useState<null | (() => void)>(null);
+  useEffect(() => { registerLeavePrompt(go => setLeave(() => go)); return () => registerLeavePrompt(null); }, []);
+  const guard = (e: React.MouseEvent, href: string) => { if (isUnsaved()) { e.preventDefault(); leaveThen(() => router.push(href)); } };
+
   async function logout() {
-    if (!confirmLeave()) return;
-    await signOut(auth); router.replace("/admin/login");
+    leaveThen(async () => { await signOut(auth); router.replace("/admin/login"); });
   }
 
   if (pathname === "/admin/login") return <>{children}</>;
@@ -55,7 +58,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navLink = (href: string, label: string, Icon: typeof Plus, compact: boolean) => (
     <Link key={href} href={href} className="admin-nav-link" data-active={pathname.startsWith(href)} title={compact ? label : undefined}
       style={compact ? { justifyContent: "center", padding: "10px 0" } : undefined}
-      onClick={e => { if (!confirmLeave()) e.preventDefault(); }}>
+      onClick={e => guard(e, href)}>
       <Icon size={18} /> {!compact && label}
     </Link>
   );
@@ -63,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const sidebar = (compact: boolean) => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: compact ? "20px 12px" : "20px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: compact ? "center" : "space-between", gap: 8, padding: compact ? "0 0 20px" : "0 4px 20px 8px" }}>
-        <Link href="/admin/dashboard" onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <Link href="/admin/dashboard" onClick={e => guard(e, "/admin/dashboard")} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <Image src="/logo.png" alt="" width={32} height={32} style={{ objectFit: "contain", flexShrink: 0 }} />
           {!compact && <div>
             <p style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>Aval Agam</p>
@@ -71,7 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>}
         </Link>
       </div>
-      <Link href="/admin/events/create" title={compact ? "New event" : undefined} onClick={e => { if (!confirmLeave()) e.preventDefault(); }} style={{ marginBottom: 16 }}>
+      <Link href="/admin/events/create" title={compact ? "New event" : undefined} onClick={e => guard(e, "/admin/events/create")} style={{ marginBottom: 16 }}>
         <Button style={{ width: "100%", padding: compact ? 0 : undefined }}><Plus size={16} />{!compact && " New event"}</Button>
       </Link>
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>{NAV.map(({ href, label, Icon }) => navLink(href, label, Icon, compact))}</nav>
@@ -117,6 +120,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <main className="lg:pl-[var(--side)]" style={{ transition: "padding .2s" }}>
         <div style={{ maxWidth: 1600, margin: "0 auto", padding: "28px 16px 80px" }} className="lg:px-8">{children}</div>
       </main>
+
+      <ConfirmDialog open={!!leave} danger title="Leave without saving?" confirmLabel="Leave page"
+        message="You have unsaved changes on this event. If you leave now, they'll be lost."
+        onCancel={() => setLeave(null)} onConfirm={() => { const go = leave; setLeave(null); go?.(); }} />
     </div>
   );
 }

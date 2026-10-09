@@ -7,7 +7,7 @@ import { localToday, sessionStart, type EventSession } from "@/lib/event-session
 import { repeatDates, formatDateLong, formatDateShort, formatTime12, rupees } from "@/lib/booking-logic";
 import { normalizeYouTubeUrls, safeExternalUrl, youtubeVideoId, descriptionText } from "@/lib/event-content";
 import { EVENT_CATEGORY_OPTIONS, EVENT_TIME_OPTIONS } from "@/lib/event-options";
-import { setUnsaved, confirmLeave } from "@/lib/unsaved";
+import { setUnsaved, leaveThen } from "@/lib/unsaved";
 import { EventDescriptionEditor } from "@/components/EventDescriptionEditor";
 import { ImageUploader } from "./ImageUploader";
 import { Accordion, Badge, Button, C, EventStatusBadge, Field, PageHeader, Select, inputStyle, shadow, useToast } from "./ui";
@@ -274,7 +274,7 @@ export function EventEditor({ initial }: { initial?: Event }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader title={isEdit ? form.title || "Edit event" : "New event"} badge={<>{isEdit && <EventStatusBadge status={status} />}{dirty && <Badge tone="warn">Unsaved changes</Badge>}</>}
-        back={<button onClick={() => { if (confirmLeave()) router.push(isEdit ? `/admin/events/${initial!.id}` : "/admin/events"); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, color: C.ink }}><ArrowLeft size={16} /> {isEdit ? "Back to event" : "Events"}</button>} />
+        back={<button onClick={() => leaveThen(() => router.push(isEdit ? `/admin/events/${initial!.id}` : "/admin/events"))} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, color: C.ink }}><ArrowLeft size={16} /> {isEdit ? "Back to event" : "Events"}</button>} />
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6" style={{ alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>

@@ -105,10 +105,7 @@
 .secNav a:hover { background: var(--card); color: var(--brand); }
 
 /* About */
-.prose { font-size: 15.5px; line-height: 1.75; color: var(--t2); }
-.prose :global(.event-rich-text) { font-size: inherit; line-height: inherit; color: inherit; font-family: inherit; }
-.prose :global(.event-rich-text p) { margin: 0 0 .9em; }
-.prose :global(.event-rich-text p:empty), .prose :global(.event-rich-text p:has(> br:only-child)) { display: none; }
+.prose { color: var(--t2); }
 .prose :global(.event-rich-text strong) { color: var(--t1); }
 .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 110px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff); }
 .more { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 14px; font-weight: 600; color: var(--brand); }
